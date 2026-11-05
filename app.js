@@ -289,8 +289,31 @@ async function startRec(sid, mid) {
   const s = S.schedules.find(x => x.id === sid), m = s.meetings.find(x => x.id === mid);
   const n = note(sid, mid);
   n.tr = (n.tr.trim() ? n.tr.replace(/\s+$/, "") + "\n\n" : "") + `── 받아쓰기 ${hhmm()} ──\n`;
-  Object.assign(R, { on: true, sid, mid, startAt: Date.now(), interim: "", lastHeard: Date.now(), restarts: 0 });
-  const rec = new SR(); rec.lang = "ko-KR"; rec.continuous = true; rec.interimResults = true; R.rec = rec;
+  Object.assign(R, { on: true, sid, mid, startAt: Date.now(), interim: "", lastHeard: Date.now(), active: false, lastEnd: Date.now(), fail: 0, lastErr: null });
+  spawnRec();
+  try { R.wake = await navigator.wakeLock?.request("screen"); } catch (e) { }
+  $("recBar").hidden = false; $("recLabel").textContent = `${m.org} 받아쓰는 중`;
+  clearInterval(R.tick);
+  R.tick = setInterval(() => {
+    $("recClock").textContent = fmt(Date.now() - R.startAt);
+    if (R.on && !R.active && Date.now() - R.lastEnd > 2500) spawnRec();   // 멈춰 있으면 다시 켜기
+    if (Date.now() - R.lastHeard > 45000) rstatus("45초 넘게 인식된 말이 없습니다. 휴대폰을 화자 가까이 두세요.");
+  }, 1000);
+  const ta = $("tr-" + mid); if (ta) ta.value = n.tr;
+  rstatus("받아쓰는 중 · 화면을 켜 두세요"); paintRecButtons();
+}
+
+// 받아쓰기 세션: 말이 끊겨 브라우저가 인식을 끝내도 정지를 누를 때까지 계속 새로 켭니다.
+function commitInterim(n) {
+  if (R.interim && R.interim.trim()) { n.tr += `[${fmt(Date.now() - R.startAt)}] ${R.interim.trim()}\n`; R.interim = ""; n.at = Date.now(); saveSoon(); }
+}
+function spawnRec() {
+  if (!R.on) return;
+  const n = note(R.sid, R.mid), mid = R.mid;
+  R.lastEnd = Date.now();
+  try { R.rec && (R.rec.onend = null, R.rec.abort()); } catch (e) { }
+  const rec = new SR(); rec.lang = "ko-KR"; rec.continuous = true; rec.interimResults = true; rec.maxAlternatives = 1; R.rec = rec;
+  rec.onstart = () => { R.active = true; };
   rec.onresult = e => {
     let interim = "";
     for (let i = e.resultIndex; i < e.results.length; i++) {
@@ -298,33 +321,32 @@ async function startRec(sid, mid) {
       if (e.results[i].isFinal) { if (t) { n.tr += `[${fmt(Date.now() - R.startAt)}] ${t}\n`; n.at = Date.now(); saveSoon(); } }
       else interim += t + " ";
     }
-    R.interim = interim; R.lastHeard = Date.now(); R.restarts = 0;
+    R.interim = interim; R.lastHeard = Date.now(); R.fail = 0;
     const ta = $("tr-" + mid); if (ta) { ta.value = n.tr; ta.scrollTop = ta.scrollHeight; }
     const ie = $("int-" + mid); if (ie) ie.textContent = interim ? "듣는 중: " + interim : "";
     rstatus("받아쓰는 중"); syncBadges();
   };
   rec.onerror = e => {
+    R.lastErr = e.error;
     if (e.error === "not-allowed" || e.error === "service-not-allowed") { stopRec(); msg("마이크 권한이 거부되었습니다. 브라우저 설정에서 이 사이트의 마이크를 허용해 주세요."); }
-    else if (e.error === "network") rstatus("네트워크가 불안정합니다. 다시 연결 중…");
+    else if (e.error === "network") { R.fail++; rstatus("네트워크가 불안정합니다. 다시 연결 중…"); }
+    else if (e.error === "audio-capture") rstatus("마이크를 다른 앱이 쓰고 있습니다. 녹음 앱을 닫아주세요.");
   };
   rec.onend = () => {
+    R.active = false; R.lastEnd = Date.now();
     if (!R.on || R.rec !== rec) return;
-    if (++R.restarts > 8) { rstatus("받아쓰기가 멈췄습니다. 정지 후 다시 시작해 주세요."); return; }
-    setTimeout(() => { if (R.on && R.rec === rec) { try { rec.start(); } catch (err) { rstatus("다시 시작하지 못했습니다. 정지 후 다시 눌러주세요."); } } }, 80);
+    commitInterim(n);   // 끊기기 직전 말도 버리지 않음
+    const ta = $("tr-" + mid); if (ta) ta.value = n.tr;
+    const delay = R.lastErr === "network" ? Math.min(5000, 600 * R.fail) : R.lastErr === "audio-capture" ? 1500 : 30;
+    R.lastErr = null;
+    setTimeout(() => { if (R.on && R.rec === rec) spawnRec(); }, delay);
   };
-  try { rec.start(); } catch (e) { R.on = false; msg("받아쓰기를 시작하지 못했습니다. 페이지를 새로고침한 뒤 다시 시도해 주세요."); return; }
-  try { R.wake = await navigator.wakeLock?.request("screen"); } catch (e) { }
-  $("recBar").hidden = false; $("recLabel").textContent = `${m.org} 받아쓰는 중`;
-  clearInterval(R.tick);
-  R.tick = setInterval(() => { $("recClock").textContent = fmt(Date.now() - R.startAt); if (Date.now() - R.lastHeard > 45000) rstatus("45초 넘게 인식된 말이 없습니다. 휴대폰을 화자 가까이 두세요."); }, 1000);
-  const ta = $("tr-" + mid); if (ta) ta.value = n.tr;
-  rstatus("받아쓰는 중 · 화면을 켜 두세요"); paintRecButtons();
+  try { rec.start(); } catch (e) { setTimeout(() => { if (R.on && R.rec === rec) spawnRec(); }, 500); }
 }
 function stopRec() {
   if (!R.on) return;
   const n = note(R.sid, R.mid);
-  if (R.interim.trim()) n.tr += `[${fmt(Date.now() - R.startAt)}] ${R.interim.trim()}\n`;
-  R.on = false; try { R.rec.stop(); } catch (e) { }
+  R.on = false; commitInterim(n); try { R.rec.stop(); } catch (e) { }
   clearInterval(R.tick); try { R.wake && R.wake.release(); } catch (e) { } R.wake = null;
   n.at = Date.now(); saveNow();
   const ta = $("tr-" + R.mid); if (ta) ta.value = n.tr;
@@ -334,7 +356,7 @@ function stopRec() {
 }
 $("recStop").onclick = stopRec;
 document.addEventListener("visibilitychange", async () => {
-  if (document.visibilityState === "visible" && R.on) { try { R.wake = await navigator.wakeLock?.request("screen"); } catch (e) { } try { R.rec.start(); } catch (e) { } }
+  if (document.visibilityState === "visible" && R.on) { try { R.wake = await navigator.wakeLock?.request("screen"); } catch (e) { } if (!R.active) spawnRec(); }
 });
 
 /* ---------- AI 정리 ---------- */
