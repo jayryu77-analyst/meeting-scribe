@@ -43,7 +43,7 @@ function fillSel() {
 $("schedSel").onchange = e => { S.cur = e.target.value; saveNow(); ui.day = null; ui.broker = "전체"; renderSched(); };
 $("newBtn").onclick = () => { resetImport(); show("import"); };
 $("cancelImport").onclick = () => { show("sched"); renderSched(); };
-$("setBtn").onclick = () => { const st = settings(); $("keyIn").value = st.key || ""; $("modelIn").value = st.model || ""; $("sumUrlIn").value = sumUrl(); $("recAppIn").value = st.recApp || "browser"; $("gainIn").value = String(st.gain || 1); fillMics(st.micId); $("deskSet").hidden = !DESKTOP; $("syncRepoIn").value = st.syncRepo || ""; $("syncTokenIn").value = st.syncToken || ""; $("syncPassIn").value = st.syncPass || ""; Sync.paint(); show("set"); };
+$("setBtn").onclick = () => { const st = settings(); $("keyIn").value = st.key || ""; $("modelIn").value = st.model || ""; $("sumUrlIn").value = sumUrl(); fillRecApps(); $("gainIn").value = String(st.gain || 1); fillMics(st.micId); $("deskSet").hidden = !DESKTOP; $("syncRepoIn").value = st.syncRepo || ""; $("syncTokenIn").value = st.syncToken || ""; $("syncPassIn").value = st.syncPass || ""; Sync.paint(); show("set"); };
 $("closeSet").onclick = () => S.schedules.length ? (show("sched"), renderSched()) : show("import");
 $("saveSet").onclick = () => {
   try { localStorage.setItem(SET_KEY, JSON.stringify({ ...settings(), key: $("keyIn").value.trim(), model: $("modelIn").value.trim(), sumUrl: $("sumUrlIn").value.trim(), recApp: $("recAppIn").value, gain: +$("gainIn").value || 1, micId: $("micIn").value, syncRepo: $("syncRepoIn").value.trim().replace(/^https?:\/\/github.com\//, "").replace(/\/$/, ""), syncToken: $("syncTokenIn").value.trim(), syncPass: $("syncPassIn").value })); } catch (e) { }
@@ -620,7 +620,20 @@ const REC_APPS = {
   recorder: { name: "삼성 녹음 앱", label: "녹음 앱으로 녹음", store: "Galaxy Store",
     url: "intent://ProductDetail/com.sec.android.app.voicenote#Intent;scheme=samsungapps;package=com.sec.android.app.samsungapps;S.browser_fallback_url=" + encodeURIComponent("https://play.google.com/store/apps/details?id=com.sec.android.app.voicenote") + ";end" }
 };
-function recApp() { const a = settings().recApp; return REC_APPS[a] ? a : "browser"; }
+REC_APPS.clovaweb = { name: "클로바노트 웹", label: "클로바노트 웹으로 녹음", web: "https://clovanote.naver.com/" };
+const IS_MAC = /Macintosh|Mac OS X/i.test(navigator.userAgent);
+const MOBILE_APPS = ["browser", "clova", "recorder"], DESK_APPS = ["browser", "clovaweb"];
+function recApp() { const a = settings().recApp; const ok = DESKTOP ? DESK_APPS : MOBILE_APPS; return ok.includes(a) ? a : "browser"; }
+function fillRecApps() {
+  const opts = DESKTOP
+    ? [["browser", "앱 안에서 받아쓰기 (추천 · 마이크 선택·증폭·줌 소리 가능)"], ["clovaweb", "클로바노트 웹 열기 (새 탭에서 녹음)"]]
+    : [["browser", "브라우저 받아쓰기 (앱 안에서 실시간)"], ["clova", "클로바노트 (안드로이드 · Play 스토어 거쳐 열기)"], ["recorder", "삼성 기본 녹음 앱 (갤럭시 · Galaxy Store 거쳐 열기)"]];
+  $("recAppIn").innerHTML = opts.map(([v, t]) => `<option value="${v}">${t}</option>`).join("");
+  $("recAppIn").value = recApp();
+  $("recHint").textContent = DESKTOP
+    ? `이 ${IS_MAC ? "맥" : "노트북"}의 녹음 방식입니다(휴대폰과 따로 저장). 노트북은 '앱 안에서 받아쓰기'가 가장 편합니다. 클로바노트 웹을 고르면 버튼을 누를 때 녹음 제목이 복사되고 클로바노트 웹이 새 탭으로 열립니다. 녹음이 끝나면 '전체 음성 기록 텍스트 복사' → 미팅노트 '녹취 넣기'로 넣으세요. ${IS_MAC ? "맥의 음성 메모 앱" : "윈도우 음성 녹음기"}는 웹에서 열 수 없어 직접 실행해야 하고, 받아쓰기 기능이 없어 권하지 않습니다.`
+    : "이 휴대폰의 녹음 방식입니다(노트북과 따로 저장). 클로바노트·녹음 앱을 고르면 버튼을 눌렀을 때 스토어의 앱 페이지가 열리고 '열기'를 누르면 앱이 열립니다(크롬 보안 정책상 바로 열 수 없음). 녹음 제목(날짜·시간·기관)이 복사되니, 녹음이 끝나면 녹취를 미팅노트로 보내세요. 아이폰은 앱을 자동으로 열 수 없어 직접 여셔야 합니다.";
+}
 const recName = m => `${m.date.slice(5).replace("-", "")} ${m.start.replace(":", "")} ${m.org}`;
 function extStatus(n) {
   if (!n || !n.ext || n.ext.done) return "";
@@ -634,6 +647,11 @@ function startExternal(sid, mid, app) {
   const st = document.querySelector(`[data-rst="${mid}"]`);
   // 버튼을 누른 그 순간에 복사와 앱 열기를 함께 실행 (기다리면 크롬이 앱 열기를 막음)
   let copied = true; try { navigator.clipboard.writeText(name).catch(() => { copied = false; }); } catch (e) { copied = false; }
+  if (A.web) {
+    window.open(A.web, "_blank", "noopener");
+    if (st) st.textContent = `클로바노트 웹을 새 탭으로 열었습니다. 녹음 제목 "${name}"이 복사돼 있습니다. 끝나면 '전체 음성 기록 텍스트 복사' 후 '녹취 넣기'로 넣으세요.`;
+    return;
+  }
   if (/Android/i.test(navigator.userAgent)) {
     location.href = A.url;
     if (st) st.textContent = `${A.store}가 열리면 '열기'를 눌러 ${A.name}에서 녹음을 시작하세요. 녹음 제목 "${name}"이 복사돼 있습니다.`;

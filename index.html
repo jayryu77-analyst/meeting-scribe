@@ -102,12 +102,8 @@
   <!-- 설정 -->
   <section class="card" id="setView" hidden>
     <h2>설정</h2>
-    <label class="f">녹음 방식 (미팅 카드의 녹음 버튼)<select id="recAppIn">
-      <option value="browser">브라우저 받아쓰기 (앱 안에서 실시간)</option>
-      <option value="clova">클로바노트 (안드로이드 · Play 스토어 거쳐 열기)</option>
-      <option value="recorder">삼성 기본 녹음 앱 (갤럭시 · Galaxy Store 거쳐 열기)</option>
-    </select></label>
-    <p class="hint">클로바노트·녹음 앱을 고르면 버튼을 눌렀을 때 스토어의 앱 페이지가 열립니다. 거기서 '열기'를 누르면 앱이 열리고(크롬 보안 정책상 바로 열 수 없음), 녹음 제목(날짜·시간·기관)이 복사됩니다. 녹음이 끝나면 녹취를 공유 → NDR 미팅노트로 보내면 그 미팅에 자동으로 들어갑니다. 아이폰은 앱을 자동으로 열 수 없어 직접 여셔야 합니다.</p>
+    <label class="f">녹음 방식 (이 기기의 녹음 버튼)<select id="recAppIn"></select></label>
+    <p class="hint" id="recHint"></p>
     <div class="desk" id="deskSet" hidden>
       <h3>PC 마이크 (맥·윈도우 크롬·엣지)</h3>
       <label class="f">마이크<select id="micIn"><option value="">기본 마이크</option></select></label>
