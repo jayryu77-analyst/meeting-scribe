@@ -27,8 +27,19 @@
   <!-- 일정 만들기 -->
   <section class="card" id="importView" hidden>
     <h2>일정 만들기</h2>
-    <p class="hint">엑셀 파일을 올리거나, 엑셀 표를 복사해서 붙여넣으세요. 날짜 줄(예: 26.11.05(목))과 Start·End·방문기관·Contact·Tel·Location·담당브로커 열을 알아서 찾습니다.</p>
-    <label class="b pri file">엑셀·CSV·텍스트 파일 올리기<input type="file" id="fileIn" accept=".xlsx,.xls,.csv,.txt,text/plain,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel"></label>
+    <p class="hint">일정표 사진·엑셀 파일을 올리거나, 엑셀 표를 복사해서 붙여넣으세요. 날짜 줄(예: 26.11.05(목))과 Start·End·방문기관·Contact·Tel·Location·담당브로커 열을 알아서 찾습니다.</p>
+    <div class="row">
+      <label class="b pri file">사진으로 만들기<input type="file" id="photoIn" accept="image/*"></label>
+      <label class="b pri file">엑셀·CSV·텍스트 파일<input type="file" id="fileIn" accept=".xlsx,.xls,.csv,.txt,text/plain,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel"></label>
+    </div>
+    <div class="photo" id="photoBox" hidden>
+      <img id="photoPrev" alt="올린 일정표 사진">
+      <div class="photoside">
+        <span class="st" id="photoSt"></span>
+        <div class="row"><button class="b" id="photoClaude" type="button">Claude 앱에서 읽기 (더 정확)</button><button class="b" id="photoAgain" type="button">다시 읽기</button></div>
+        <p class="hint">인식 결과는 아래 칸에 들어갑니다. 틀린 글자를 고친 뒤 '읽어오기'를 누르세요. Claude 앱에서 받은 표도 아래 칸에 붙여넣으면 됩니다.</p>
+      </div>
+    </div>
     <textarea id="pasteIn" rows="8" placeholder="또는 여기에 붙여넣기&#10;&#10;예)&#10;26.11.05(목)&#10;09:10~10:00 베어링자산 김재민 매니저 010-0000-0000 을지로 더존타워 7층&#10;10:20~11:10 스팍스자산 노기영 상무 에스타워 2층"></textarea>
     <div class="row"><button class="b pri" id="parseBtn" type="button">읽어오기</button><button class="b" id="cancelImport" type="button" hidden>취소</button></div>
 
@@ -37,7 +48,7 @@
       <label class="f">일정 이름<input type="text" id="titleIn"></label>
       <div id="prevList" class="prev"></div>
       <div id="prevWarn" class="hint"></div>
-      <div class="row"><button class="b pri" id="createBtn" type="button">이대로 만들기</button></div>
+      <div class="row"><button class="b pri" id="createBtn" type="button">이대로 만들기</button><button class="b" id="toTsv" type="button">표 형식으로 고치기</button></div>
     </div>
   </section>
 

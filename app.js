@@ -11,6 +11,7 @@ const dow = d => "일월화수목금토"[new Date(d + "T12:00:00+09:00").getDay(
 const md = d => `${+d.slice(5, 7)}/${+d.slice(8)}`;
 
 /* ---------- 저장 ---------- */
+let photoFile = null;
 const DB_KEY = "ndrnote-v1", SET_KEY = "ndrnote-settings";
 function loadDB() { try { const v = JSON.parse(localStorage.getItem(DB_KEY) || "null"); if (v && v.schedules) return v; } catch (e) { } return { schedules: [], notes: {}, sums: {}, cur: null }; }
 let S = loadDB();
@@ -50,7 +51,7 @@ $("saveSet").onclick = () => {
 
 /* ---------- 일정 가져오기 ---------- */
 let parsed = null;
-function resetImport() { parsed = null; $("preview").hidden = true; $("pasteIn").value = ""; $("fileIn").value = ""; }
+function resetImport() { parsed = null; $("preview").hidden = true; $("pasteIn").value = ""; $("fileIn").value = ""; photoFile = null; $("photoBox").hidden = true; }
 function loadXLSX() {
   if (window.XLSX) return Promise.resolve();
   return new Promise((ok, no) => { const s = document.createElement("script"); s.src = "https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"; s.onload = ok; s.onerror = () => no(new Error("xlsx")); document.head.appendChild(s); });
@@ -71,7 +72,7 @@ $("fileIn").onchange = async e => {
   } catch (err) { msg(err.message === "xlsx" ? "엑셀 읽기 도구를 불러오지 못했습니다. 인터넷 연결을 확인하거나, 엑셀 표를 복사해 붙여넣어 주세요." : "파일을 읽지 못했습니다. 엑셀 표를 복사해 붙여넣어 보세요."); }
 };
 $("parseBtn").onclick = () => {
-  const t = $("pasteIn").value.trim();
+  const t = $("pasteIn").value.replace(/```[a-z]*\n?/gi, "").trim();
   if (!t) { msg("파일을 올리거나 일정을 붙여넣어 주세요."); return; }
   preview(SchedParser.parseText(t, { year: new Date().getFullYear() }), "");
 };
@@ -90,6 +91,12 @@ function preview(r, fallbackTitle) {
   $("prevWarn").textContent = `${days}일 · 미팅 ${r.meetings.length}건을 찾았습니다.` + (r.warnings.length ? ` 건너뛴 줄 ${r.warnings.length}개: ${r.warnings.slice(0, 2).join(" / ")}` : "");
   $("preview").scrollIntoView({ behavior: "smooth", block: "start" });
 }
+$("toTsv").onclick = () => {
+  if (!parsed) return;
+  $("pasteIn").value = "TITLE\t" + $("titleIn").value + "\n" + parsed.meetings.map(m => [m.date, m.start, m.end, m.org, m.contact, m.tel, m.loc, m.brokers.join("/")].join("\t")).join("\n");
+  $("pasteIn").focus(); $("pasteIn").scrollIntoView({ behavior: "smooth", block: "center" });
+  msg("한 줄에 한 미팅입니다(날짜·시작·종료·기관·담당자·전화·장소·브로커, 탭 구분). 틀린 글자를 고친 뒤 '읽어오기'를 누르세요.", true);
+};
 $("createBtn").onclick = () => {
   if (!parsed) return;
   const id = "s" + Date.now().toString(36);
@@ -98,6 +105,69 @@ $("createBtn").onclick = () => {
   S.cur = id; saveNow(); resetImport();
   ui.day = null; ui.broker = "전체"; ui.open = new Set();
   show("sched"); renderSched(); msg("일정을 만들었습니다.", true);
+};
+
+
+/* ---------- 사진으로 일정 만들기 ---------- */
+const PHOTO_PROMPT = () => `이 사진은 기관투자자 미팅(NDR) 일정표입니다. 아래 형식의 탭 구분 텍스트로만 답하세요. 설명이나 코드블록 없이 결과만 쓰세요.
+첫 줄: TITLE<탭>일정 이름
+다음 줄부터 미팅 한 줄씩: 날짜(YYYY-MM-DD)<탭>시작(HH:MM)<탭>종료(HH:MM)<탭>방문기관<탭>담당자(이름 직함)<탭>전화<탭>장소<탭>담당브로커(여러 명이면 /로 구분)
+점심 등 미팅이 아닌 줄은 빼세요. 연도가 없으면 ${new Date().getFullYear()}년으로 쓰세요. 비어 있는 칸은 비워 두고 탭은 유지하세요.`;
+function loadScript(src) { return new Promise((ok, no) => { const s = document.createElement("script"); s.src = src; s.onload = ok; s.onerror = () => no(new Error("script")); document.head.appendChild(s); }); }
+async function imgCanvas(file, maxSide, forOcr) {
+  const bmp = await createImageBitmap(file);
+  const k = Math.min(forOcr ? 2 : 1, maxSide / Math.max(bmp.width, bmp.height));
+  const c = document.createElement("canvas"); c.width = Math.round(bmp.width * k); c.height = Math.round(bmp.height * k);
+  const g = c.getContext("2d"); g.drawImage(bmp, 0, 0, c.width, c.height);
+  if (forOcr) { // 흑백 + 어두운 배경이면 반전 + 대비 높이기
+    const im = g.getImageData(0, 0, c.width, c.height), d = im.data; let sum = 0;
+    for (let i = 0; i < d.length; i += 4) { const y = 0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2]; d[i] = d[i + 1] = d[i + 2] = y; sum += y; }
+    const inv = sum / (d.length / 4) < 115;
+    for (let i = 0; i < d.length; i += 4) { let y = d[i]; if (inv) y = 255 - y; y = y < 150 ? Math.max(0, y - 40) : 255; d[i] = d[i + 1] = d[i + 2] = y; }
+    g.putImageData(im, 0, 0);
+  }
+  return c;
+}
+async function readPhoto() {
+  if (!photoFile) return;
+  const st = $("photoSt");
+  if (settings().key) {
+    st.textContent = "AI가 사진을 읽는 중… (10~30초)";
+    try {
+      const c = await imgCanvas(photoFile, 2000, false);
+      const b64 = c.toDataURL("image/jpeg", 0.9).split(",")[1];
+      const text = await askAI([{ type: "image", source: { type: "base64", media_type: "image/jpeg", data: b64 } }, { type: "text", text: PHOTO_PROMPT() }]);
+      $("pasteIn").value = text; st.textContent = "AI가 읽었습니다. 미리보기를 확인하세요."; $("parseBtn").click(); return;
+    } catch (e) { st.textContent = "AI로 읽지 못해 이 기기에서 읽습니다… (" + e.message + ")"; }
+  }
+  try {
+    st.textContent = "글자 인식 도구를 불러오는 중… (처음 한 번은 수십 MB를 받습니다. 와이파이 권장)";
+    if (!window.Tesseract) await loadScript("https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js");
+    const c = await imgCanvas(photoFile, 2600, true);
+    const w = await Tesseract.createWorker("kor+eng", 1, { logger: m => { if (m.status === "recognizing text") st.textContent = `사진 속 글자 읽는 중… ${Math.round(m.progress * 100)}%`; else if (/load|initializ/.test(m.status)) st.textContent = "글자 인식 준비 중…"; } });
+    await w.setParameters({ tessedit_pageseg_mode: "6", preserve_interword_spaces: "1" });
+    const r = await w.recognize(c); await w.terminate();
+    const text = r.data.text.replace(/[|｜]/g, " ").replace(/[ \t]{2,}/g, " ");
+    $("pasteIn").value = text;
+    st.textContent = "이 기기에서 읽었습니다. 한글 이름은 틀릴 수 있으니 미리보기를 확인하세요. 더 정확하게 하려면 'Claude 앱에서 읽기'를 쓰세요.";
+    $("parseBtn").click();
+  } catch (e) { st.textContent = "사진을 읽지 못했습니다. 'Claude 앱에서 읽기'를 써보세요."; }
+}
+$("photoIn").onchange = e => {
+  photoFile = e.target.files[0]; e.target.value = ""; if (!photoFile) return;
+  $("photoBox").hidden = false; $("photoPrev").src = URL.createObjectURL(photoFile); $("preview").hidden = true;
+  readPhoto();
+};
+$("photoAgain").onclick = readPhoto;
+$("photoClaude").onclick = async e => {
+  if (!photoFile) return; const btn = e.currentTarget, st = $("photoSt");
+  const mobile = /Android|iPhone|iPad/i.test(navigator.userAgent);
+  if (mobile && navigator.canShare && navigator.canShare({ files: [photoFile] })) {
+    try { await navigator.share({ files: [photoFile], text: PHOTO_PROMPT(), title: "일정표 읽기" }); st.textContent = "Claude 앱을 골라 보내세요. Claude가 준 결과를 아래 칸에 붙여넣고 '읽어오기'를 누르세요."; return; }
+    catch (err) { if (err && err.name === "AbortError") return; }
+  }
+  await copy(PHOTO_PROMPT(), btn, "Claude 앱에서 읽기 (더 정확)");
+  st.textContent = "요청문을 복사했습니다. Claude 앱에서 이 사진을 첨부하고 요청문을 붙여넣은 뒤, 결과를 아래 칸에 붙여넣으세요.";
 };
 
 /* ---------- 일정 화면 ---------- */

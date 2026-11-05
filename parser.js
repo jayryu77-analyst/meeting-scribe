@@ -59,13 +59,27 @@
   function parseRows(rows, opts = {}) {
     const year = opts.year || new Date().getFullYear();
     const out = []; const warnings = [];
-    let title = ""; let curDate = null; let map = null;
+    let title = ""; let curDate = null; let map = null; let dateList = []; let lastStart = null; let dateSetAt = -1, rowNo = 0;
+    const nextDate = () => {
+      const i = dateList.indexOf(curDate);
+      if (i >= 0 && i + 1 < dateList.length) return dateList[i + 1];
+      const d = new Date(curDate + "T12:00:00Z"); d.setUTCDate(d.getUTCDate() + 1);
+      while ([0, 6].includes(d.getUTCDay())) d.setUTCDate(d.getUTCDate() + 1);
+      return d.toISOString().slice(0, 10);
+    };
     for (const raw of rows) {
       const row = (raw || []).map(c => (c === null || c === undefined) ? "" : c);
       const cells = row.map(c => typeof c === "string" ? c.trim() : c);
       const filled = cells.filter(c => c !== "");
       if (!filled.length) continue;
+      rowNo++;
       const joined = filled.map(String).join(" ");
+      // "일시 : 11/5(목),6(금),9(월)" → 날짜 목록
+      if (!dateList.length && /일시|일정|date/i.test(joined)) {
+        const f = joined.match(/(\d{1,2})\s*\/\s*(\d{1,2})\s*\(/);
+        if (f) { const mo = +f[1]; const days = [+f[2], ...[...joined.slice(f.index + f[0].length).matchAll(/[,，]\s*(\d{1,2})\s*\(/g)].map(x => +x[1])];
+          dateList = days.map(d => valid(year, mo, d)).filter(Boolean); }
+      }
 
       if (!title) { const t = filled.find(c => typeof c === "string" && /NDR|IR|로드쇼|roadshow|미팅|일정/i.test(c) && !normTime(c)); if (t) title = String(t).replace(/\s+/g, " ").trim(); }
 
@@ -80,8 +94,10 @@
       const hasTime = timeCells.some(Boolean);
       if (!hasTime) {
         const d = filled.map(c => normDate(c, year)).find(Boolean);
-        if (d && filled.length <= 3) { curDate = d; continue; }
+        if (d && filled.length <= 3 && !(curDate && d < curDate && /\b00\b|\.00/.test(joined))) { curDate = d; dateSetAt = rowNo; lastStart = null; continue; }
         if (d && /일시|date|날짜/i.test(joined)) { curDate = d; continue; }
+        // 날짜처럼 보이지만 잘못 읽힌 줄(예: 26.11.00(3)) → 다음 날짜로
+        if (curDate && filled.length <= 3 && /\d{2}\s*[.\/]\s*\d{1,2}\s*[.\/]\s*\d{1,2}|\d{1,2}\s*\/\s*\d{1,2}/.test(joined) && /\(/.test(joined)) { curDate = nextDate(); dateSetAt = rowNo; lastStart = null; warnings.push(`날짜를 정확히 읽지 못해 ${curDate}로 추정했습니다`); continue; }
         continue;
       }
       if (/점심|lunch|오찬|이동|break/i.test(joined) && filled.filter(c => typeof c === "string" && !normTime(c)).length <= 2 && !PHONE.test(joined)) continue;
@@ -115,6 +131,10 @@
         const [h, mi] = m.start.split(":").map(Number); const add = +m.end.slice(3);
         const t = h * 60 + mi + add; m.end = pad(Math.floor(t / 60)) + ":" + pad(t % 60);
       }
+      // 시간이 앞으로 돌아가면 다음 날로 (날짜 줄을 못 읽은 경우)
+      if (!m.date && curDate && lastStart && m.start < lastStart && dateSetAt < rowNo - 1) { curDate = nextDate(); warnings.push(`날짜 줄을 읽지 못해 ${curDate}로 추정했습니다`); }
+      if (m.end && m.start && m.end <= m.start) { const [h, mi] = m.start.split(":").map(Number); const t = h * 60 + mi + 50; m.end = pad(Math.floor(t / 60)) + ":" + pad(t % 60); }
+      lastStart = m.start;
       m.date = m.date || curDate;
       if (!m.date) { warnings.push(`날짜를 찾지 못한 행: ${joined.slice(0, 40)}`); continue; }
       if (!m.end) { const [h, mi] = m.start.split(":").map(Number); const t = h * 60 + mi + 50; m.end = pad(Math.floor(t / 60)) + ":" + pad(t % 60); }
@@ -126,11 +146,48 @@
   }
   function splitBrokers(v) { return String(v || "").split(/[\/,·&]|\s{2,}/).map(s => s.trim()).filter(Boolean); }
 
+  // 표준 형식(탭 구분): 날짜 · 시작 · 종료 · 기관 · 담당자 · 전화 · 장소 · 브로커  (첫 줄 "TITLE\t이름" 선택)
+  function parseStrict(text, year) {
+    const lines = String(text || "").replace(/\r/g, "").split("\n").filter(l => l.trim());
+    let title = ""; const out = []; let hit = 0;
+    for (const l of lines) {
+      const c = l.split("\t").map(x => x.trim());
+      if (/^title$/i.test(c[0])) { title = c[1] || ""; continue; }
+      const d = normDate(c[0], year), st = normTime(c[1]);
+      if (!d || !st || c.length < 4) continue;
+      hit++;
+      out.push({ date: d, start: st, end: normTime(c[2]) || st, org: c[3] || "(기관명 없음)", contact: c[4] || "", tel: c[5] || "", loc: c[6] || "", brokers: splitBrokers(c[7] || "") });
+    }
+    return hit && hit >= lines.filter(l => !/^title\t/i.test(l)).length * 0.6 ? { title, meetings: out.sort((a, b) => (a.date + a.start).localeCompare(b.date + b.start)), warnings: [] } : null;
+  }
+  const BROKER_TOK = /^[가-힣]{2,4}([\/,][가-힣]{2,4})*$/;
+  function freeLine(t1, t2, rest) {
+    let tel = ""; let before = rest, after = "";
+    const p = rest.match(PHONE);
+    if (p) { tel = p[0]; before = rest.slice(0, p.index); after = rest.slice(p.index + p[0].length); }
+    const bt = before.trim().split(/\s+/).filter(Boolean);
+    let org = bt[0] || "", contact = bt.slice(1).join(" ");
+    let at = after.trim().split(/\s+/).filter(Boolean), broker = "";
+    if (!p) { // 전화번호가 없으면: 기관 담당자(+직함) 장소...
+      const toks = bt; org = toks[0] || ""; let i = 1; contact = toks[1] || "";
+      if (toks[2] && /^(매니저|상무|전무|이사|부장|차장|과장|대리|팀장|책임|수석|본부장|실장|대표|선임|사원|위원|센터장|CIO|PM)$/.test(toks[2])) { contact += " " + toks[2]; i = 3; } else i = 2;
+      at = toks.slice(i);
+    }
+    if (at.length > 1 && BROKER_TOK.test(at[at.length - 1])) broker = at.pop();
+    return [t1, t2, org, contact, tel, at.join(" "), broker];
+  }
+
   function parseText(text, opts = {}) {
+    const strict = parseStrict(text, opts.year || new Date().getFullYear());
+    if (strict && strict.meetings.length) return strict;
     const rows = String(text || "").replace(/\r/g, "").split("\n").map(line => {
       if (line.includes("\t")) return line.split("\t");
       if (/,/.test(line) && line.split(",").length >= 3) return line.split(",");
       if (/\s{2,}/.test(line.trim())) return line.trim().split(/\s{2,}/);
+      // 사진 글자인식 결과: "09:10 10:00 0:50 베어링자산 김재민매니저 010-... 을지로 더존타워7층 이완기"
+      const lead = line.trim().replace(/^[^\d]{0,3}/, ""); const head = lead.slice(0, 26).replace(/[©®°'"`,]/g, " ").replace(/(\d{1,2})\s*[.:;]+\s*(\d{2})/g, "$1:$2");
+      const o = (head + lead.slice(26)).match(/^(\d{1,2}:\d{2})\s*[-~–]?\s*(\d{1,2}:\d{2})\s+(?:\d{1,2}:\d{2}\s+)?(.+)$/);
+      if (o && !/[~–-]/.test(line.slice(0, 14))) { const r = freeLine(o[1], o[2], o[3]); return [r[0], r[1], r[2], r[3], r[4], r[5], r[6]]; }
       // "09:10~10:00 베어링자산 김재민 매니저 ..." 형태
       const m = line.trim().match(/^(\d{1,2}:\d{2})\s*[-~–]\s*(\d{1,2}:\d{2})\s+(.+)$/);
       if (m) {
@@ -145,6 +202,6 @@
     });
     return parseRows(rows, opts);
   }
-  const api = { parseRows, parseText, normTime, normDate };
+  const api = { parseRows, parseText, parseStrict, normTime, normDate };
   if (typeof module !== "undefined") module.exports = api; else root.SchedParser = api;
 })(this);
