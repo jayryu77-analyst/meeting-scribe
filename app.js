@@ -41,10 +41,10 @@ function fillSel() {
 $("schedSel").onchange = e => { S.cur = e.target.value; saveNow(); ui.day = null; ui.broker = "전체"; renderSched(); };
 $("newBtn").onclick = () => { resetImport(); show("import"); };
 $("cancelImport").onclick = () => { show("sched"); renderSched(); };
-$("setBtn").onclick = () => { const st = settings(); $("keyIn").value = st.key || ""; $("modelIn").value = st.model || ""; show("set"); };
+$("setBtn").onclick = () => { const st = settings(); $("keyIn").value = st.key || ""; $("modelIn").value = st.model || ""; $("sumUrlIn").value = sumUrl(); show("set"); };
 $("closeSet").onclick = () => S.schedules.length ? (show("sched"), renderSched()) : show("import");
 $("saveSet").onclick = () => {
-  try { localStorage.setItem(SET_KEY, JSON.stringify({ key: $("keyIn").value.trim(), model: $("modelIn").value.trim() })); } catch (e) { }
+  try { localStorage.setItem(SET_KEY, JSON.stringify({ key: $("keyIn").value.trim(), model: $("modelIn").value.trim(), sumUrl: $("sumUrlIn").value.trim() })); } catch (e) { }
   msg("설정을 저장했습니다.", true); $("closeSet").onclick();
 };
 
@@ -306,7 +306,7 @@ async function noteAI(sid, mid, btn) {
     const ta = $("note-" + mid); if (ta) ta.value = n.note;
     st.textContent = "메모에 추가했습니다."; syncBadges(); return true;
   } catch (e) {
-    if (e.code === "nokey") { await copy(prompt, btn, "AI로 노트 정리"); st.textContent = "API 키가 없어 정리 요청문을 복사했습니다. Claude 앱에 붙여넣고 결과를 메모에 붙여넣으세요."; }
+    if (e.code === "nokey") { const how = await sendToClaude(prompt, `${m.org} 미팅 노트 정리`, btn); st.textContent = how === "share" ? "공유창에서 Claude 앱을 고르세요. 결과는 메모 칸에 붙여넣으면 됩니다." : how === "copy" ? "정리 요청문을 복사했습니다. Claude 앱에 붙여넣고 결과를 메모에 붙여넣으세요." : "보내기를 취소했습니다."; }
     else st.textContent = "정리하지 못했습니다: " + e.message;
     return false;
   } finally { btn.disabled = false; }
@@ -353,7 +353,7 @@ async function daySummary(s, d, btn) {
     const text = await askAI(prompt);
     S.sums[sumKey(s.id, d)] = { text, at: Date.now() }; saveNow();
   } catch (e) {
-    if (e.code === "nokey" && btn) { await copy(prompt, btn); if (isCur()) $("sumState").textContent = " · API 키가 없어 요약 요청문을 복사했습니다. Claude 앱에 붙여넣으세요."; }
+    if (e.code === "nokey" && btn) { const how = await sendToClaude(prompt, `${md(d)} 하루 요약`, btn); if (isCur()) $("sumState").textContent = how === "share" ? " · 공유창에서 Claude 앱을 고르세요" : how === "copy" ? " · 요약 요청문을 복사했습니다. Claude 앱에 붙여넣으세요." : ""; }
     else if (isCur()) $("sumState").textContent = " · 요약하지 못했습니다: " + e.message;
     tx.dataset.busy = ""; if (!S.sums[sumKey(s.id, d)]) tx.hidden = true; return;
   }
@@ -420,6 +420,38 @@ $("importBackup").onchange = async e => {
     S.cur = S.cur || S.schedules[0]?.id; saveNow(); renderSched(); msg(`백업에서 일정 ${d.schedules.length}개를 불러왔습니다.`, true);
   } catch (err) { msg("백업 파일을 읽지 못했습니다."); }
 };
+
+
+/* ---------- API 없이: Claude 앱으로 보내기 · 정리 페이지 ---------- */
+const DEFAULT_SUM_URL = "https://claude.ai/artifact/2eDDmyiEeoM7bumQCWbb7m";
+function sumUrl() { return settings().sumUrl || DEFAULT_SUM_URL; }
+async function sendToClaude(text, title, btn) {
+  const mobile = /Android|iPhone|iPad/i.test(navigator.userAgent);
+  if (mobile && navigator.share) {
+    try { await navigator.share({ title, text }); return "share"; }
+    catch (e) { if (e && e.name === "AbortError") return "cancel"; }
+  }
+  await copy(text, btn); return "copy";
+}
+function exportPack(s, ms) {
+  const meetings = ms.map(m => { const n = note(s.id, m.id); return { date: m.date, start: m.start, end: m.end, org: m.org, contact: m.contact, tr: n.tr, note: n.note }; })
+    .filter(x => x.tr.trim() || x.note.trim());
+  return { text: "NDRNOTE:" + JSON.stringify({ app: "ndr-note", v: 1, title: s.title, meetings }), count: meetings.length };
+}
+function sendPack(s, ms, btn) {
+  const { text, count } = exportPack(s, ms);
+  const hint = $("sendHint");
+  if (!count) { msg("보낼 녹취나 메모가 없습니다."); return; }
+  const url = sumUrl(), label = btn.textContent;
+  // 클립보드 복사와 새 창 열기를 같은 탭 동작 안에서 처리 (브라우저 차단 방지)
+  const p = navigator.clipboard ? navigator.clipboard.writeText(text) : Promise.reject();
+  window.open(url, "_blank", "noopener");
+  p.then(() => { btn.textContent = `${count}건 복사됨`; msg(`미팅 ${count}건 기록을 복사했습니다. 열린 정리 페이지에 붙여넣고 '정리 시작'을 누르세요.`, true); })
+   .catch(() => { msg("자동 복사가 막혀 있습니다. 아래 상자의 내용을 길게 눌러 복사하세요."); hint.hidden = false; hint.textContent = text; })
+   .finally(() => setTimeout(() => btn.textContent = label, 2000));
+}
+$("sendDay").onclick = e => { const s = cur(); if (s) sendPack(s, dayMeetings(s, ui.day), e.currentTarget); };
+$("sendAll").onclick = e => { const s = cur(); if (s) sendPack(s, s.meetings, e.currentTarget); };
 
 /* ---------- 시작 ---------- */
 if (S.schedules.length) { if (!cur()) S.cur = S.schedules[0].id; renderSched(); } else show("import");

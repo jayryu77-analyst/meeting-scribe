@@ -51,7 +51,8 @@
     <div class="filters" id="filters"></div>
     <section class="sum" id="sumPanel">
       <div class="sumhead"><div><b id="sumTitle"></b><span class="st" id="sumState"></span></div>
-        <div class="row"><button class="b" id="sumRun" type="button">하루 요약</button><button class="b" id="sumCopy" type="button">요약·노트 복사</button></div></div>
+        <div class="row"><button class="b pri" id="sendDay" type="button">정리 페이지로 보내기</button><button class="b" id="sumRun" type="button">하루 요약</button><button class="b" id="sumCopy" type="button">요약·노트 복사</button></div></div>
+      <p class="hint" id="sendHint" hidden></p>
       <div class="sumtext" id="sumText" hidden></div>
     </section>
     <div class="timeline" id="timeline"></div>
@@ -60,6 +61,7 @@
       <div class="toolbody">
         <div class="row">
           <button class="b" id="editText" type="button">일정 텍스트로 수정</button>
+          <button class="b" id="sendAll" type="button">전체 기록 정리 페이지로 보내기</button>
           <button class="b" id="exportBtn" type="button">백업 파일 저장</button>
           <label class="b file">백업 불러오기<input type="file" id="importBackup" accept=".json,application/json"></label>
           <button class="b del" id="delSched" type="button">이 일정 삭제</button>
@@ -76,9 +78,11 @@
   <!-- 설정 -->
   <section class="card" id="setView" hidden>
     <h2>설정</h2>
-    <label class="f">Claude API 키 (AI 정리용, 선택)<input type="password" id="keyIn" autocomplete="off" placeholder="sk-ant-..."></label>
+    <label class="f">정리 페이지 주소 (Claude 계정으로 정리)<input type="text" id="sumUrlIn" autocomplete="off"></label>
+    <p class="hint">API 키 없이 쓰는 방법입니다. "정리 페이지로 보내기"를 누르면 기록이 복사되고 이 주소가 열립니다. 각자 자기 Claude 계정으로 정리되며, 결과도 각자 계정에만 저장됩니다.</p>
+    <label class="f">Claude API 키 (선택 · 넣으면 앱 안에서 바로 정리)<input type="password" id="keyIn" autocomplete="off" placeholder="sk-ant-..."></label>
     <label class="f">모델<input type="text" id="modelIn" placeholder="claude-sonnet-5-5"></label>
-    <p class="hint">키는 이 기기 브라우저에만 저장됩니다. 키가 없으면 "AI 정리"를 누를 때 정리 요청문이 복사되고, Claude 앱에 붙여넣어 결과를 받을 수 있습니다. AI 정리 시 해당 미팅의 녹취·메모가 Anthropic API로 전송됩니다.</p>
+    <p class="hint">키는 이 기기 브라우저에만 저장됩니다. 키가 없으면 "AI로 노트 정리"를 누를 때 휴대폰 공유창이 열립니다. Claude 앱을 고르면 그 앱에 로그인된 계정으로 정리됩니다(PC는 정리 요청문이 복사됩니다). AI 정리 시 해당 미팅의 녹취·메모가 Anthropic API로 전송됩니다.</p>
     <div class="row"><button class="b pri" id="saveSet" type="button">저장</button><button class="b" id="closeSet" type="button">닫기</button></div>
   </section>
 
