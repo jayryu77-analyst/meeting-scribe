@@ -789,13 +789,13 @@ const Sync = (() => {
     if (!/^[\x21-\x7e]+$/.test(c.syncToken)) throw new Error("토큰에 공백이나 한글이 섞여 있습니다. 토큰을 다시 복사해 붙여넣으세요.");
     if (!/^[\w.-]+\/[\w.-]+$/.test(c.syncRepo)) throw new Error("저장소는 '아이디/저장소이름' 형식으로 넣어주세요 (예: jayryu77-analyst/ndr-note-data).");
     const sep = path.includes("?") ? "&" : "?";
-    const url = `https://api.github.com/repos/${c.syncRepo}/${path}` + (!opt.method ? `${sep}t=${Date.now()}` : "");
+    const url = `https://api.github.com/repos/${c.syncRepo}` + (path ? "/" + path : "") + (!opt.method ? `${sep}t=${Date.now()}` : "");
     try {
       return await fetch(url, { ...opt, headers: { "Authorization": "Bearer " + c.syncToken, "Accept": "application/vnd.github+json", ...(opt.headers || {}) } });
     } catch (e) {
       // 연결 자체가 실패: GitHub 접속이 막혔는지 확인
       let open = false; try { open = (await fetch("https://api.github.com/zen?t=" + Date.now())).ok || true; } catch (e2) { open = false; }
-      throw new Error(open ? "GitHub 요청이 차단되었습니다. 브라우저 확장 프로그램(광고 차단 등)이나 보안 프로그램을 확인하거나, 다른 네트워크(휴대폰 데이터)에서 시도해 보세요." : "이 네트워크에서 GitHub(api.github.com)에 접속할 수 없습니다. 회사망 차단일 수 있으니 휴대폰 데이터나 다른 와이파이에서 시도해 보세요.");
+      throw new Error(open ? `GitHub 요청이 실패했습니다(${opt.method || "GET"} ${path || "저장소 확인"}: ${e.message}). 브라우저 확장 프로그램(광고 차단 등)이나 보안 프로그램을 확인하거나, 다른 네트워크(휴대폰 데이터)에서 시도해 보세요.` : "이 네트워크에서 GitHub(api.github.com)에 접속할 수 없습니다. 회사망 차단일 수 있으니 휴대폰 데이터나 다른 와이파이에서 시도해 보세요.");
     }
   }
   async function pull(c) {
