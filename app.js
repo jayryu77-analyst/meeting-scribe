@@ -274,7 +274,7 @@ function paintRecButtons() {
   document.querySelectorAll("[data-rec]").forEach(b => {
     const me = R.on && R.mid === b.dataset.rec;
     const app = recApp();
-    b.textContent = me ? "받아쓰기 정지" : app === "browser" ? "받아쓰기 시작" : REC_APPS[app].name + "로 녹음";
+    b.textContent = me ? "받아쓰기 정지" : REC_APPS[app].label;
     b.disabled = app === "browser" && !SR;
     const alt = document.querySelector(`[data-alt="${b.dataset.rec}"]`);
     if (alt) { alt.textContent = app === "browser" ? "클로바노트로 녹음" : (me ? "받아쓰기 정지" : "앱 안에서 받아쓰기"); alt.hidden = app !== "browser" && !SR; }
@@ -532,11 +532,13 @@ $("sendAll").onclick = e => { const s = cur(); if (s) sendPack(s, s.meetings, e.
 
 
 /* ---------- 외부 녹음 앱 연결 ---------- */
-const PLAY = id => encodeURIComponent("https://play.google.com/store/apps/details?id=" + id);
+// 크롬은 '웹에서 열기'를 허용한 앱 화면만 열 수 있어서, 녹음 앱은 스토어 앱 페이지(→ '열기')를 거쳐 엽니다.
 const REC_APPS = {
-  browser: { name: "브라우저 받아쓰기" },
-  clova: { name: "클로바노트", intent: `intent:#Intent;action=android.intent.action.MAIN;category=android.intent.category.LAUNCHER;package=com.naver.clova.minute;S.browser_fallback_url=${PLAY("com.naver.clova.minute")};end` },
-  recorder: { name: "녹음 앱", intent: "intent:#Intent;action=android.provider.MediaStore.RECORD_SOUND;end" }
+  browser: { name: "브라우저 받아쓰기", label: "받아쓰기 시작" },
+  clova: { name: "클로바노트", label: "클로바노트로 녹음", store: "Play 스토어",
+    url: "intent://details?id=com.naver.clova.minute#Intent;scheme=market;package=com.android.vending;S.browser_fallback_url=" + encodeURIComponent("https://play.google.com/store/apps/details?id=com.naver.clova.minute") + ";end" },
+  recorder: { name: "삼성 녹음 앱", label: "녹음 앱으로 녹음", store: "Galaxy Store",
+    url: "intent://ProductDetail/com.sec.android.app.voicenote#Intent;scheme=samsungapps;package=com.sec.android.app.samsungapps;S.browser_fallback_url=" + encodeURIComponent("https://play.google.com/store/apps/details?id=com.sec.android.app.voicenote") + ";end" }
 };
 function recApp() { const a = settings().recApp; return REC_APPS[a] ? a : "browser"; }
 const recName = m => `${m.date.slice(5).replace("-", "")} ${m.start.replace(":", "")} ${m.org}`;
@@ -544,19 +546,20 @@ function extStatus(n) {
   if (!n || !n.ext || n.ext.done) return "";
   return `${REC_APPS[n.ext.app]?.name || "녹음 앱"} 녹음 시작 ${new Date(n.ext.at).toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit", hour12: false })} · 끝나면 녹취를 공유 → NDR 미팅노트로 보내세요`;
 }
-async function startExternal(sid, mid, app) {
+function startExternal(sid, mid, app) {
   const s = S.schedules.find(x => x.id === sid), m = s.meetings.find(x => x.id === mid), n = note(sid, mid);
   if (R.on) stopRec();
   n.ext = { app, at: Date.now() }; n.at = Date.now(); saveNow();
-  const name = recName(m); let copied = false;
-  try { await navigator.clipboard.writeText(name); copied = true; } catch (e) { }
+  const name = recName(m), A = REC_APPS[app];
   const st = document.querySelector(`[data-rst="${mid}"]`);
+  // 버튼을 누른 그 순간에 복사와 앱 열기를 함께 실행 (기다리면 크롬이 앱 열기를 막음)
+  let copied = true; try { navigator.clipboard.writeText(name).catch(() => { copied = false; }); } catch (e) { copied = false; }
   if (/Android/i.test(navigator.userAgent)) {
-    if (st) st.textContent = `${REC_APPS[app].name}를 여는 중…` + (copied ? ` 녹음 제목 "${name}"이 복사돼 있습니다.` : "");
-    location.href = REC_APPS[app].intent;
-    setTimeout(() => { if (st) st.textContent = extStatus(n); }, 2500);
+    location.href = A.url;
+    if (st) st.textContent = `${A.store}가 열리면 '열기'를 눌러 ${A.name}에서 녹음을 시작하세요. 녹음 제목 "${name}"이 복사돼 있습니다.`;
+    setTimeout(() => { if (st) st.textContent = extStatus(n) + " (앱이 안 열렸다면 홈 화면에서 직접 여세요)"; }, 8000);
   } else {
-    if (st) st.textContent = `이 기기에서는 ${REC_APPS[app].name}를 자동으로 열 수 없습니다. 직접 열어 녹음하세요.` + (copied ? ` 녹음 제목 "${name}"을 복사해 두었습니다.` : "") + " 끝나면 녹취를 복사해 '녹취 넣기'로 넣으세요.";
+      if (st) st.textContent = `이 기기에서는 ${A.name}를 자동으로 열 수 없습니다. 직접 열어 녹음하세요. 녹음 제목 "${name}"을 복사해 두었습니다. 끝나면 녹취를 복사해 '녹취 넣기'로 넣으세요.`;
   }
 }
 
