@@ -177,9 +177,46 @@
     return [t1, t2, org, contact, tel, at.join(" "), broker];
   }
 
+  // 휴대폰에서 엑셀 표를 복사하면 칸마다 한 줄씩 붙는 경우 → 행으로 다시 묶기
+  const clean = l => l.replace(/[\u3000\u00a0]/g, " ").trim();
+  const pureTime = l => /^\d{1,2}:\d{2}$/.test(l);
+  function columnRows(text) {
+    const lines = String(text || "").replace(/\r/g, "").split("\n").map(clean).filter(Boolean);
+    if (lines.some(l => l.includes("\t"))) return null;
+    if (lines.filter(pureTime).length < 4 || lines.filter(pureTime).length < lines.length * 0.15) return null;
+    const rows = []; let header = null; let i = 0;
+    while (i < lines.length) {
+      const l = lines[i];
+      if (colType(l) && !pureTime(l)) { // 헤더: 연속된 열 이름
+        header = []; while (i < lines.length && colType(lines[i]) && !pureTime(lines[i])) header.push(colType(lines[i++]));
+        continue;
+      }
+      if (pureTime(l) && header) {
+        const times = []; while (i < lines.length && pureTime(lines[i]) && times.length < 3) times.push(lines[i++]);
+        const texts = [];
+        while (i < lines.length && !pureTime(lines[i]) && !(colType(lines[i]) && lines[i].length < 16) && !(/^\d{2,4}[.\/-]\d{1,2}[.\/-]\d{1,2}/.test(lines[i]) && lines[i].length < 16) && !/^점\s*심$|^lunch$/i.test(lines[i])) texts.push(lines[i++]);
+        // 헤더 순서대로 글자 칸 배정 (시간·소요시간 제외, 전화는 모양으로)
+        const order = header.filter(t => !["start", "end", "dur"].includes(t));
+        const m = { start: times[0], end: times[1] || "", org: "", contact: "", tel: "", loc: "", broker: "" };
+        let rest = texts.slice();
+        const ti = rest.findIndex(x => PHONE.test(x) && x.replace(/[\d\-.\s()+]/g, "").length < 3);
+        if (ti >= 0 && order.includes("tel")) { m.tel = rest[ti]; rest.splice(ti, 1); }
+        const slots = order.filter(t => t !== "tel");
+        if (rest.length === slots.length) slots.forEach((t, k) => m[t] = rest[k]);
+        else { m.org = rest[0] || ""; m.contact = rest[1] || ""; if (rest.length > 3 && BROKER_TOK.test(rest[rest.length - 1])) m.broker = rest.pop(); m.loc = rest.slice(2).join(" "); }
+        rows.push([m.start, m.end, m.org, m.contact, m.tel, m.loc, m.broker]);
+        continue;
+      }
+      rows.push([l]); i++;
+    }
+    return [["Start", "End", "방문 기관", "Contact Point", "Tel", "Location", "담당브로커"], ...rows];
+  }
+
   function parseText(text, opts = {}) {
     const strict = parseStrict(text, opts.year || new Date().getFullYear());
     if (strict && strict.meetings.length) return strict;
+    const col = columnRows(text);
+    if (col) return parseRows(col, opts);
     const rows = String(text || "").replace(/\r/g, "").split("\n").map(line => {
       if (line.includes("\t")) return line.split("\t");
       if (/,/.test(line) && line.split(",").length >= 3) return line.split(",");
