@@ -3,283 +3,95 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<title>미팅 받아쓰기</title>
+<title>NDR 미팅노트</title>
 <link rel="manifest" href="manifest.webmanifest">
 <meta name="theme-color" content="#2f4fb5">
 <meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-title" content="미팅 받아쓰기">
+<meta name="apple-mobile-web-app-title" content="미팅노트">
 <link rel="apple-touch-icon" href="icon-192.png">
-<style>
-:root{--bg:#f3f4f7;--surface:#fff;--ink:#1b2133;--muted:#6a7186;--line:#e1e4ec;--accent:#2f4fb5;--soft:#e7ecfb;--rec:#e5484d;--ok:#0f8a5f;--warn:#b45309;
-  --sans:-apple-system,"Apple SD Gothic Neo","Malgun Gothic","Noto Sans KR",sans-serif;--mono:ui-monospace,Menlo,monospace}
-@media (prefers-color-scheme:dark){:root{--bg:#12151d;--surface:#1b2030;--ink:#e8ebf3;--muted:#9aa1b5;--line:#2c3347;--accent:#8ea6ff;--soft:#252e4d;--ok:#4fd19c;--warn:#f0a44b;color-scheme:dark}}
-*{box-sizing:border-box}
-body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--sans);font-size:15px;line-height:1.5}
-.wrap{max-width:640px;margin:0 auto;padding:calc(16px + env(safe-area-inset-top)) max(16px,env(safe-area-inset-right)) calc(32px + env(safe-area-inset-bottom)) max(16px,env(safe-area-inset-left));display:flex;flex-direction:column;gap:14px}
-h1{margin:0;font-size:22px}
-.sub{color:var(--muted);font-size:13px;margin-top:2px}
-.card{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:16px;display:flex;flex-direction:column;gap:12px}
-label.f{display:flex;flex-direction:column;gap:4px;font-size:13px;color:var(--muted)}
-input[type=text]{font:inherit;font-size:16px;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:9px;padding:10px 12px;width:100%}
-.recarea{display:flex;align-items:center;gap:16px}
-.big{width:84px;height:84px;border-radius:50%;border:0;background:var(--rec);color:#fff;font:inherit;font-weight:700;font-size:15px;cursor:pointer;flex:none;box-shadow:0 4px 14px #e5484d55}
-.big.on{background:var(--ink);color:var(--bg);box-shadow:none}
-.big:disabled{opacity:.4}
-.meta{display:flex;flex-direction:column;gap:2px;min-width:0}
-.clock{font-family:var(--mono);font-size:28px;font-variant-numeric:tabular-nums}
-.state{font-size:13px;color:var(--muted)}
-.state.live{color:var(--ok)} .state.bad{color:var(--warn)}
-.dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--rec);margin-right:6px;animation:p 1.2s infinite}
-@keyframes p{50%{opacity:.25}}
-@media (prefers-reduced-motion:reduce){.dot{animation:none}}
-.live{white-space:pre-wrap;font-size:15px;line-height:1.7;min-height:120px;max-height:45vh;overflow:auto;background:var(--bg);border-radius:10px;padding:12px}
-.live .i{color:var(--muted)}
-.ts{font-family:var(--mono);font-size:12px;color:var(--accent)}
-.note{font-size:12.5px;color:var(--muted);margin:0}
-.warnbox{font-size:13px;color:var(--warn);background:color-mix(in srgb,var(--warn) 12%,transparent);border-radius:9px;padding:10px 12px}
-h2{font-size:16px;margin:4px 0 0}
-.sess{display:flex;flex-direction:column;gap:8px}
-.s{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:12px 14px;display:flex;flex-direction:column;gap:8px}
-.s .t{display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;align-items:baseline}
-.s .t b{font-size:15px}
-.s .t span{font-size:12px;color:var(--muted)}
-.s textarea{font:inherit;font-size:14px;line-height:1.6;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:9px;padding:10px;width:100%;min-height:140px;resize:vertical}
-.btns{display:flex;gap:6px;flex-wrap:wrap}
-.b{appearance:none;font:inherit;font-size:13px;border:1px solid var(--line);background:var(--surface);color:var(--ink);border-radius:8px;padding:6px 12px;cursor:pointer}
-.b.pri{background:var(--accent);border-color:var(--accent);color:#fff}
-.b.del{color:var(--rec)}
-button:focus-visible,input:focus-visible,textarea:focus-visible,summary:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
-details summary{cursor:pointer;color:var(--accent);font-size:13px}
-.empty{color:var(--muted);font-size:14px;text-align:center;padding:16px}
-.sched{display:flex;flex-direction:column;gap:10px}
-.shead{display:flex;justify-content:space-between;align-items:baseline;gap:8px;flex-wrap:wrap}
-.shead b{font-size:15px}
-.days{display:flex;gap:6px;flex-wrap:wrap}
-.day{appearance:none;font:inherit;font-size:13px;border:1px solid var(--line);background:var(--surface);color:var(--ink);border-radius:999px;padding:4px 12px;cursor:pointer}
-.day[aria-pressed="true"]{background:var(--accent);border-color:var(--accent);color:#fff}
-.mlist{display:flex;flex-direction:column;gap:6px}
-.m{appearance:none;font:inherit;text-align:left;display:grid;grid-template-columns:52px 1fr auto;gap:10px;align-items:center;border:1px solid var(--line);background:var(--surface);color:var(--ink);border-radius:10px;padding:10px 12px;cursor:pointer}
-.m .tm{font-family:var(--mono);font-size:14px;font-variant-numeric:tabular-nums}
-.m .nm{min-width:0}.m .nm b{display:block;font-size:14.5px}.m .nm span{font-size:12px;color:var(--muted)}
-.m .tag{font-size:11.5px;color:var(--ok);font-weight:600}
-.m.now{border-color:var(--ok)}
-.m.done{opacity:.6}
-.m[aria-pressed="true"]{outline:2px solid var(--accent);outline-offset:-1px;opacity:1}
-.linkb{appearance:none;border:0;background:none;color:var(--muted);font:inherit;font-size:12px;cursor:pointer;text-decoration:underline}
-</style>
+<link rel="stylesheet" href="style.css">
 </head>
 <body>
 <div class="wrap">
-  <header>
-    <h1>미팅 받아쓰기</h1>
-    <div class="sub">일정에서 미팅을 고르고 녹음하면, 말하는 내용이 그 미팅 기록으로 받아써집니다. 음성 파일은 저장하지 않습니다.</div>
+  <header class="top">
+    <div class="brand"><h1>NDR 미팅노트</h1></div>
+    <div class="topbtns">
+      <select id="schedSel" aria-label="일정 선택" hidden></select>
+      <button class="b" id="newBtn" type="button">새 일정</button>
+      <button class="b" id="setBtn" type="button">설정</button>
+    </div>
   </header>
 
-  <div class="warnbox" id="unsupported" hidden></div>
+  <div class="warnbox" id="msg" hidden></div>
 
-  <section class="card sched" id="schedCard" hidden>
-    <div class="shead"><b id="schedTitle"></b><button class="linkb" id="schedClear" type="button">일정 지우기</button></div>
-    <div class="days" id="days"></div>
-    <div class="mlist" id="mlist"></div>
-  </section>
-  <div class="warnbox" id="noSched" hidden>NDR 페이지의 "받아쓰기 앱에 일정 넣기" 링크를 이 휴대폰에서 열면 일정이 들어옵니다. 일정 없이도 미팅 이름을 직접 적어 녹음할 수 있습니다.</div>
+  <!-- 일정 만들기 -->
+  <section class="card" id="importView" hidden>
+    <h2>일정 만들기</h2>
+    <p class="hint">엑셀 파일을 올리거나, 엑셀 표를 복사해서 붙여넣으세요. 날짜 줄(예: 26.11.05(목))과 Start·End·방문기관·Contact·Tel·Location·담당브로커 열을 알아서 찾습니다.</p>
+    <label class="b pri file">엑셀·CSV·텍스트 파일 올리기<input type="file" id="fileIn" accept=".xlsx,.xls,.csv,.txt,text/plain,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel"></label>
+    <textarea id="pasteIn" rows="8" placeholder="또는 여기에 붙여넣기&#10;&#10;예)&#10;26.11.05(목)&#10;09:10~10:00 베어링자산 김재민 매니저 010-0000-0000 을지로 더존타워 7층&#10;10:20~11:10 스팍스자산 노기영 상무 에스타워 2층"></textarea>
+    <div class="row"><button class="b pri" id="parseBtn" type="button">읽어오기</button><button class="b" id="cancelImport" type="button" hidden>취소</button></div>
 
-  <section class="card">
-    <label class="f">미팅 이름<input type="text" id="title" placeholder="예: 11/5 베어링자산" list="recent" autocomplete="off"></label>
-    <datalist id="recent"></datalist>
-    <div class="recarea">
-      <button class="big" id="recBtn" type="button">녹음</button>
-      <div class="meta">
-        <span class="clock" id="clock">00:00</span>
-        <span class="state" id="state">대기 중</span>
-      </div>
+    <div id="preview" hidden>
+      <h3>미리보기</h3>
+      <label class="f">일정 이름<input type="text" id="titleIn"></label>
+      <div id="prevList" class="prev"></div>
+      <div id="prevWarn" class="hint"></div>
+      <div class="row"><button class="b pri" id="createBtn" type="button">이대로 만들기</button></div>
     </div>
-    <div class="live" id="live" aria-live="polite"><span class="i">녹음을 시작하면 받아쓴 내용이 여기에 나타납니다.</span></div>
-    <p class="note">녹음 중에는 화면을 켜 두세요. 화면이 꺼지거나 다른 앱으로 나가면 받아쓰기가 멈춥니다.</p>
   </section>
 
-  <div class="shead"><h2>받아쓴 기록</h2><button class="b pri" id="copyDay" type="button" hidden>이 날짜 기록 모두 복사</button></div>
-  <section class="sess" id="sessions"></section>
+  <!-- 일정 화면 -->
+  <section id="schedView" hidden>
+    <div class="shead">
+      <div><div class="eyebrow" id="sRange"></div><h2 id="sTitle"></h2></div>
+    </div>
+    <div class="stats" id="stats"></div>
+    <nav class="tabs" id="tabs" role="tablist"></nav>
+    <div class="filters" id="filters"></div>
+    <section class="sum" id="sumPanel">
+      <div class="sumhead"><div><b id="sumTitle"></b><span class="st" id="sumState"></span></div>
+        <div class="row"><button class="b" id="sumRun" type="button">하루 요약</button><button class="b" id="sumCopy" type="button">요약·노트 복사</button></div></div>
+      <div class="sumtext" id="sumText" hidden></div>
+    </section>
+    <div class="timeline" id="timeline"></div>
+    <details class="tools">
+      <summary>일정 관리</summary>
+      <div class="toolbody">
+        <div class="row">
+          <button class="b" id="editText" type="button">일정 텍스트로 수정</button>
+          <button class="b" id="exportBtn" type="button">백업 파일 저장</button>
+          <label class="b file">백업 불러오기<input type="file" id="importBackup" accept=".json,application/json"></label>
+          <button class="b del" id="delSched" type="button">이 일정 삭제</button>
+        </div>
+        <div id="editBox" hidden>
+          <textarea id="editArea" rows="12"></textarea>
+          <p class="hint">한 줄에 한 미팅. 탭으로 구분: 날짜 · 시작 · 종료 · 기관 · 담당자 · 전화 · 장소 · 브로커. 기존 메모는 날짜·시작시간이 같으면 유지됩니다.</p>
+          <div class="row"><button class="b pri" id="saveEdit" type="button">수정 저장</button></div>
+        </div>
+      </div>
+    </details>
+  </section>
 
-  <details>
-    <summary>사용법과 주의사항</summary>
-    <p class="note" style="margin-top:8px">
-      1. 미팅 이름을 적고 <b>녹음</b>을 누릅니다. 처음 한 번 마이크 권한을 허용하세요.<br>
-      2. 끝나면 <b>정지</b>를 누릅니다. 받아쓴 텍스트가 아래 기록에 저장됩니다.<br>
-      3. <b>이 날짜 기록 모두 복사</b>(또는 개별 <b>복사</b>)를 눌러 NDR 페이지의 "받아쓰기 한꺼번에 붙여넣기" 칸에 붙여넣으면 미팅별로 나뉘어 정리됩니다. 개별 기록은 "녹취록으로 노트 자동 정리" 칸에 붙여넣으면 주요 내용이 노트로 정리됩니다.<br><br>
-      · 음성 파일은 기기에 남기지 않고, 받아쓴 텍스트만 이 휴대폰에 저장됩니다.<br>
-      · 받아쓰기는 휴대폰 브라우저의 음성 인식을 씁니다. 크롬은 구글 서버, 사파리는 애플 음성 인식을 거칠 수 있습니다.<br>
-      · 미팅 녹음·받아쓰기 전 회사 규정과 참석자 동의를 확인하세요.
-    </p>
-  </details>
+  <!-- 설정 -->
+  <section class="card" id="setView" hidden>
+    <h2>설정</h2>
+    <label class="f">Claude API 키 (AI 정리용, 선택)<input type="password" id="keyIn" autocomplete="off" placeholder="sk-ant-..."></label>
+    <label class="f">모델<input type="text" id="modelIn" placeholder="claude-sonnet-5-5"></label>
+    <p class="hint">키는 이 기기 브라우저에만 저장됩니다. 키가 없으면 "AI 정리"를 누를 때 정리 요청문이 복사되고, Claude 앱에 붙여넣어 결과를 받을 수 있습니다. AI 정리 시 해당 미팅의 녹취·메모가 Anthropic API로 전송됩니다.</p>
+    <div class="row"><button class="b pri" id="saveSet" type="button">저장</button><button class="b" id="closeSet" type="button">닫기</button></div>
+  </section>
+
+  <footer class="foot">모든 일정·메모·녹취는 이 기기 브라우저에만 저장됩니다. 음성 파일은 저장하지 않습니다. 기기를 바꾸거나 브라우저 데이터를 지우기 전에 백업 파일을 저장하세요.</footer>
 </div>
 
-<script>
-const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
-const $=id=>document.getElementById(id);
-const KEY="mtgscribe-v1", DRAFT="mtgscribe-draft";
-const load=()=>{try{return JSON.parse(localStorage.getItem(KEY)||"[]")}catch(e){return[]}};
-const save=a=>{try{localStorage.setItem(KEY,JSON.stringify(a))}catch(e){alertBox("저장 공간이 부족합니다. 오래된 기록을 지워주세요.")}};
-const esc=s=>String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
-const fmt=ms=>{const s=Math.floor(ms/1000);return String(Math.floor(s/60)).padStart(2,"0")+":"+String(s%60).padStart(2,"0")};
-function alertBox(msg){const b=$("unsupported");b.hidden=false;b.textContent=msg}
+<div class="recbar" id="recBar" hidden>
+  <span class="dot"></span><span id="recLabel"></span><span class="clock" id="recClock">00:00</span>
+  <button class="b" id="recStop" type="button">정지</button>
+</div>
 
-if(!SR){alertBox("이 브라우저는 음성 받아쓰기를 지원하지 않습니다. 갤럭시는 크롬, 아이폰은 사파리로 열어주세요.");$("recBtn").disabled=true}
-
-let selKey=null, selDay=null;
-let rec=null, on=false, startAt=0, tick=null, lines=[], interim="", lastHeard=0, wake=null, restarts=0;
-
-function paint(){
-  const box=$("live");
-  if(!lines.length&&!interim){box.innerHTML=on?'<span class="i">듣는 중…</span>':'<span class="i">녹음을 시작하면 받아쓴 내용이 여기에 나타납니다.</span>';return}
-  box.innerHTML=lines.map(l=>`<span class="ts">[${l.t}]</span> ${esc(l.x)}`).join("\n")+(interim?`\n<span class="i">${esc(interim)}</span>`:"");
-  box.scrollTop=box.scrollHeight;
-}
-function setState(t,cls){const s=$("state");s.className="state "+(cls||"");s.innerHTML=(on&&cls==="live"?'<span class="dot"></span>':"")+t}
-function saveDraft(){try{localStorage.setItem(DRAFT,JSON.stringify({title:$("title").value,key:selKey,startAt,lines}))}catch(e){}}
-
-function newRec(){
-  const r=new SR(); r.lang="ko-KR"; r.continuous=true; r.interimResults=true;
-  r.onresult=e=>{
-    interim="";
-    for(let i=e.resultIndex;i<e.results.length;i++){
-      const t=e.results[i][0].transcript.trim();
-      if(e.results[i].isFinal){ if(t){lines.push({t:fmt(Date.now()-startAt),x:t}); saveDraft();} }
-      else interim+=t+" ";
-    }
-    lastHeard=Date.now(); restarts=0; setState("받아쓰는 중","live"); paint();
-  };
-  r.onerror=e=>{
-    if(e.error==="not-allowed"||e.error==="service-not-allowed"){on=false;finish(false);alertBox("마이크 또는 음성 인식 권한이 거부되었습니다. 브라우저 설정에서 이 사이트의 마이크를 허용해 주세요.");}
-    else if(e.error==="network"){setState("네트워크가 불안정해 받아쓰기가 끊겼습니다. 다시 연결 중…","bad")}
-  };
-  r.onend=()=>{
-    if(!on) return;
-    restarts++;
-    if(restarts>8){setState("받아쓰기가 멈췄습니다. 정지 후 다시 녹음을 눌러주세요.","bad");return}
-    setTimeout(()=>{if(!on)return;try{r.start()}catch(err){setState("받아쓰기 재시작 실패. 정지 후 다시 녹음을 눌러주세요.","bad")}},300);
-  };
-  return r;
-}
-async function start(){
-  if(!$("title").value.trim()){const d=new Date();$("title").value=`${d.getMonth()+1}/${d.getDate()} 미팅 ${String(d.getHours()).padStart(2,"0")}:${String(d.getMinutes()).padStart(2,"0")}`}
-  lines=[];interim="";on=true;startAt=Date.now();lastHeard=Date.now();restarts=0;
-  rec=newRec();
-  try{rec.start()}catch(e){on=false;alertBox("받아쓰기를 시작하지 못했습니다. 페이지를 새로고침한 뒤 다시 시도해 주세요.");return}
-  try{wake=await navigator.wakeLock?.request("screen")}catch(e){}
-  $("recBtn").textContent="정지";$("recBtn").classList.add("on");$("title").disabled=true;document.querySelectorAll(".m,.day").forEach(b=>b.disabled=true);
-  setState("받아쓰는 중","live");paint();saveDraft();
-  tick=setInterval(()=>{$("clock").textContent=fmt(Date.now()-startAt);
-    if(on&&Date.now()-lastHeard>45000) setState("45초 넘게 인식된 말이 없습니다. 휴대폰을 화자 쪽에 가까이 두세요.","bad")},1000);
-}
-function finish(store=true){
-  on=false; try{rec&&rec.stop()}catch(e){}
-  clearInterval(tick); try{wake&&wake.release()}catch(e){} wake=null;
-  if(interim.trim()){lines.push({t:fmt(Date.now()-startAt),x:interim.trim()});interim=""}
-  if(store&&lines.length){
-    const all=load(); const title=$("title").value.trim();
-    all.unshift({id:Date.now(),key:selKey||null,title,at:startAt,dur:Date.now()-startAt,text:lines.map(l=>`[${l.t}] ${l.x}`).join("\n")});
-    save(all); remember(title);
-  }
-  try{localStorage.removeItem(DRAFT)}catch(e){}
-  $("recBtn").textContent="녹음";$("recBtn").classList.remove("on");$("title").disabled=false;
-  if(!selKey) $("title").value=""; renderSched();
-  $("clock").textContent="00:00"; setState(store&&lines.length?"저장했습니다. 아래 기록에서 복사하세요.":"대기 중", store&&lines.length?"live":"");
-  lines=[];paint();renderSessions();
-}
-$("recBtn").onclick=()=>on?finish(true):start();
-document.addEventListener("visibilitychange",async()=>{
-  if(document.visibilityState==="visible"&&on){try{wake=await navigator.wakeLock?.request("screen")}catch(e){}
-    try{rec.start()}catch(e){} }
-});
-
-function remember(t){try{const r=JSON.parse(localStorage.getItem("mtgscribe-titles")||"[]").filter(x=>x!==t);r.unshift(t);localStorage.setItem("mtgscribe-titles",JSON.stringify(r.slice(0,20)))}catch(e){} fillRecent()}
-function fillRecent(){try{$("recent").innerHTML=JSON.parse(localStorage.getItem("mtgscribe-titles")||"[]").map(t=>`<option value="${esc(t)}">`).join("")}catch(e){}}
-
-function renderSessions(){
-  const all=load(), box=$("sessions");
-  if(!all.length){box.innerHTML='<div class="empty">아직 기록이 없습니다.</div>';return}
-  box.innerHTML=all.map(s=>`<article class="s" data-id="${s.id}">
-    <div class="t"><b>${esc(s.title)}</b><span>${new Date(s.at).toLocaleString("ko-KR",{month:"numeric",day:"numeric",hour:"2-digit",minute:"2-digit"})} · ${fmt(s.dur)}</span></div>
-    <textarea aria-label="받아쓴 내용">${esc(s.text)}</textarea>
-    <div class="btns"><button class="b pri" data-a="copy" type="button">복사</button>${navigator.share?'<button class="b" data-a="share" type="button">보내기</button>':''}<button class="b del" data-a="del" type="button">삭제</button></div>
-  </article>`).join("");
-  box.querySelectorAll(".s").forEach(el=>{
-    const id=+el.dataset.id, ta=el.querySelector("textarea");
-    let t; ta.oninput=()=>{clearTimeout(t);t=setTimeout(()=>{const a=load();const s=a.find(x=>x.id===id);if(s){s.text=ta.value;save(a)}},600)};
-    el.querySelectorAll("[data-a]").forEach(b=>b.onclick=async()=>{
-      const s=load().find(x=>x.id===id); if(!s) return;
-      const full=block(s,ta.value);
-      if(b.dataset.a==="copy"){try{await navigator.clipboard.writeText(full);b.textContent="복사됨"}catch(e){ta.select();b.textContent="선택됨"}setTimeout(()=>b.textContent="복사",1500)}
-      if(b.dataset.a==="share"){try{await navigator.share({title:s.title,text:full})}catch(e){}}
-      if(b.dataset.a==="del"){if(b.dataset.arm!=="1"){b.dataset.arm="1";b.textContent="삭제 확인";setTimeout(()=>{b.dataset.arm="";b.textContent="삭제"},3000);return}
-        save(load().filter(x=>x.id!==id));renderSessions()}
-    });
-  });
-}
-
-/* ===== 일정 연동 ===== */
-const SKEY="mtgscribe-schedule";
-function getSched(){try{return JSON.parse(localStorage.getItem(SKEY)||"null")}catch(e){return null}}
-function b64dec(t){t=t.replace(/-/g,"+").replace(/_/g,"/");while(t.length%4)t+="=";const bin=atob(t);return new TextDecoder().decode(Uint8Array.from(bin,c=>c.charCodeAt(0)))}
-function importFromHash(){
-  const h=location.hash; if(!h.startsWith("#s=")) return;
-  try{const d=JSON.parse(b64dec(h.slice(3))); if(d&&Array.isArray(d.m)){localStorage.setItem(SKEY,JSON.stringify(d)); setState(`"${d.t}" 일정 ${d.m.length}건을 넣었습니다.`,"live")}}
-  catch(e){alertBox("일정 링크를 읽지 못했습니다. NDR 페이지에서 링크를 다시 열어주세요.")}
-  history.replaceState(null,"",location.pathname);
-}
-const mKey=m=>m[0]+"_"+m[1].replace(":","");
-const kstD=(d,t)=>new Date(`${d}T${t}:00+09:00`);
-const todayStr=()=>new Date().toLocaleDateString("sv-SE",{timeZone:"Asia/Seoul"});
-function autoSelect(){
-  const sc=getSched(); if(!sc) return;
-  const dates=[...new Set(sc.m.map(m=>m[0]))]; const t=todayStr();
-  selDay=dates.includes(t)?t:(dates.find(d=>d>t)||dates[dates.length-1]);
-  if(selDay===t){const now=new Date();
-    const cur=sc.m.filter(m=>m[0]===t).find(m=>now<kstD(m[0],m[2]));   // 진행 중이거나 다음 미팅
-    if(cur) pick(cur,false);}
-}
-function pick(m,toggle=true){
-  const k=mKey(m);
-  if(toggle&&selKey===k){selKey=null;$("title").value="";$("title").readOnly=false}
-  else{selKey=k;$("title").value=`${m[3]} (${m[4]})`;$("title").readOnly=true}
-  renderSched();
-}
-function renderSched(){
-  const sc=getSched();
-  $("schedCard").hidden=!sc; $("noSched").hidden=!!sc; $("copyDay").hidden=!sc;
-  if(!sc) return;
-  $("schedTitle").textContent=sc.t;
-  const dates=[...new Set(sc.m.map(m=>m[0]))];
-  if(!selDay) selDay=dates[0];
-  const dow=d=>"일월화수목금토"[new Date(d+"T12:00:00+09:00").getDay()];
-  $("days").innerHTML=dates.map(d=>`<button class="day" type="button" data-d="${d}" aria-pressed="${d===selDay}">${+d.slice(5,7)}/${+d.slice(8)}(${dow(d)})</button>`).join("");
-  $("days").querySelectorAll(".day").forEach(b=>b.onclick=()=>{selDay=b.dataset.d;renderSched()});
-  const done=new Set(load().map(x=>x.key).filter(Boolean)); const now=new Date();
-  const ms=sc.m.filter(m=>m[0]===selDay);
-  $("mlist").innerHTML=ms.map(m=>{const k=mKey(m);const st=now>=kstD(m[0],m[1])&&now<kstD(m[0],m[2])?"now":now>=kstD(m[0],m[2])?"done":"";
-    return `<button class="m ${st}" type="button" data-k="${k}" aria-pressed="${k===selKey}"><span class="tm">${m[1]}</span><span class="nm"><b>${esc(m[3])}</b><span>${esc(m[4])}${st==="now"?" · 진행 중":""}</span></span><span class="tag">${done.has(k)?"기록 있음":""}</span></button>`}).join("");
-  $("mlist").querySelectorAll(".m").forEach(b=>b.onclick=()=>pick(ms.find(m=>mKey(m)===b.dataset.k)));
-  if(on) document.querySelectorAll(".m,.day").forEach(b=>b.disabled=true);
-}
-$("schedClear").onclick=function(){if(this.dataset.arm!=="1"){this.dataset.arm="1";this.textContent="정말 지우기";setTimeout(()=>{this.dataset.arm="";this.textContent="일정 지우기"},3000);return}
-  localStorage.removeItem(SKEY);selKey=null;selDay=null;$("title").readOnly=false;$("title").value="";renderSched()};
-function block(s,text){return s.key?`#NDR ${s.key} ${s.title}\n${text}`:`${s.title}\n${text}`}
-$("copyDay").onclick=async function(){
-  const all=load().filter(x=>x.key&&x.key.startsWith(selDay)).reverse();
-  if(!all.length){this.textContent="이 날짜 기록이 없습니다";setTimeout(()=>this.textContent="이 날짜 기록 모두 복사",1800);return}
-  const txt=all.map(x=>block(x,x.text)).join("\n\n");
-  try{await navigator.clipboard.writeText(txt);this.textContent=`${all.length}건 복사됨`}catch(e){this.textContent="복사 실패"}
-  setTimeout(()=>this.textContent="이 날짜 기록 모두 복사",1800);
-};
-setInterval(()=>{if(!on&&getSched())renderSched()},60000);
-
-// 앱이 중간에 꺼졌을 때 남은 받아쓰기 복구
-(function(){try{const d=JSON.parse(localStorage.getItem(DRAFT)||"null");
-  if(d&&d.lines&&d.lines.length){const a=load();a.unshift({id:Date.now(),key:d.key||null,title:(d.title||"복구된 미팅")+" (중단됨)",at:d.startAt,dur:0,text:d.lines.map(l=>`[${l.t}] ${l.x}`).join("\n")});save(a)}
-  localStorage.removeItem(DRAFT)}catch(e){}})();
-fillRecent();importFromHash();autoSelect();renderSched();renderSessions();
-if("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(()=>{});
-</script>
+<script src="parser.js"></script>
+<script src="app.js"></script>
+<script>if("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(()=>{});</script>
 </body>
 </html>

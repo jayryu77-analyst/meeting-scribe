@@ -1,6 +1,6 @@
 {
-  "name": "미팅 받아쓰기",
-  "short_name": "받아쓰기",
+  "name": "NDR 미팅노트",
+  "short_name": "미팅노트",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",

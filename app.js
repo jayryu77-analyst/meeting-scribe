@@ -1,0 +1,427 @@
+/* NDR 미팅노트 — 일정 업로드 · 받아쓰기 · 메모 · AI 정리 (모든 데이터는 이 기기 브라우저에 저장) */
+"use strict";
+const $ = id => document.getElementById(id);
+const pad = n => String(n).padStart(2, "0");
+const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+const fmt = ms => { const s = Math.max(0, Math.floor(ms / 1000)); return pad(Math.floor(s / 60)) + ":" + pad(s % 60); };
+const kst = (d, t) => new Date(`${d}T${t}:00+09:00`);
+const todayStr = () => new Date().toLocaleDateString("sv-SE", { timeZone: "Asia/Seoul" });
+const hhmm = () => new Date().toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit", hour12: false, timeZone: "Asia/Seoul" });
+const dow = d => "일월화수목금토"[new Date(d + "T12:00:00+09:00").getDay()];
+const md = d => `${+d.slice(5, 7)}/${+d.slice(8)}`;
+
+/* ---------- 저장 ---------- */
+const DB_KEY = "ndrnote-v1", SET_KEY = "ndrnote-settings";
+function loadDB() { try { const v = JSON.parse(localStorage.getItem(DB_KEY) || "null"); if (v && v.schedules) return v; } catch (e) { } return { schedules: [], notes: {}, sums: {}, cur: null }; }
+let S = loadDB();
+let saveT = null;
+function saveNow() { try { localStorage.setItem(DB_KEY, JSON.stringify(S)); } catch (e) { msg("저장 공간이 부족합니다. 백업 후 오래된 일정을 지워주세요."); } }
+function saveSoon() { clearTimeout(saveT); saveT = setTimeout(saveNow, 700); }
+window.addEventListener("pagehide", saveNow);
+document.addEventListener("visibilitychange", () => { if (document.visibilityState === "hidden") saveNow(); });
+function settings() { try { return JSON.parse(localStorage.getItem(SET_KEY) || "{}"); } catch (e) { return {}; } }
+
+const cur = () => S.schedules.find(s => s.id === S.cur) || null;
+const nkey = (sid, mid) => sid + "|" + mid;
+function note(sid, mid) { const k = nkey(sid, mid); return S.notes[k] || (S.notes[k] = { tr: "", note: "", at: 0 }); }
+
+function msg(t, ok) { const b = $("msg"); b.hidden = !t; b.textContent = t || ""; b.className = "warnbox" + (ok ? " ok" : ""); if (t) { clearTimeout(msg.t); msg.t = setTimeout(() => b.hidden = true, 6000); } }
+
+/* ---------- 화면 전환 ---------- */
+function show(v) {
+  $("importView").hidden = v !== "import"; $("schedView").hidden = v !== "sched"; $("setView").hidden = v !== "set";
+  $("cancelImport").hidden = !S.schedules.length;
+  fillSel();
+}
+function fillSel() {
+  const sel = $("schedSel");
+  sel.hidden = !S.schedules.length;
+  sel.innerHTML = S.schedules.map(s => `<option value="${s.id}" ${s.id === S.cur ? "selected" : ""}>${esc(s.title)}</option>`).join("");
+}
+$("schedSel").onchange = e => { S.cur = e.target.value; saveNow(); ui.day = null; ui.broker = "전체"; renderSched(); };
+$("newBtn").onclick = () => { resetImport(); show("import"); };
+$("cancelImport").onclick = () => { show("sched"); renderSched(); };
+$("setBtn").onclick = () => { const st = settings(); $("keyIn").value = st.key || ""; $("modelIn").value = st.model || ""; show("set"); };
+$("closeSet").onclick = () => S.schedules.length ? (show("sched"), renderSched()) : show("import");
+$("saveSet").onclick = () => {
+  try { localStorage.setItem(SET_KEY, JSON.stringify({ key: $("keyIn").value.trim(), model: $("modelIn").value.trim() })); } catch (e) { }
+  msg("설정을 저장했습니다.", true); $("closeSet").onclick();
+};
+
+/* ---------- 일정 가져오기 ---------- */
+let parsed = null;
+function resetImport() { parsed = null; $("preview").hidden = true; $("pasteIn").value = ""; $("fileIn").value = ""; }
+function loadXLSX() {
+  if (window.XLSX) return Promise.resolve();
+  return new Promise((ok, no) => { const s = document.createElement("script"); s.src = "https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"; s.onload = ok; s.onerror = () => no(new Error("xlsx")); document.head.appendChild(s); });
+}
+$("fileIn").onchange = async e => {
+  const f = e.target.files[0]; if (!f) return;
+  const base = f.name.replace(/\.[^.]+$/, "");
+  try {
+    if (/\.(xlsx|xls)$/i.test(f.name)) {
+      await loadXLSX();
+      const wb = XLSX.read(await f.arrayBuffer(), { type: "array" });
+      let rows = [];
+      wb.SheetNames.forEach(n => { rows = rows.concat(XLSX.utils.sheet_to_json(wb.Sheets[n], { header: 1, raw: true, defval: "" })); rows.push([]); });
+      preview(SchedParser.parseRows(rows, { year: new Date().getFullYear() }), base);
+    } else {
+      preview(SchedParser.parseText(await f.text(), { year: new Date().getFullYear() }), base);
+    }
+  } catch (err) { msg(err.message === "xlsx" ? "엑셀 읽기 도구를 불러오지 못했습니다. 인터넷 연결을 확인하거나, 엑셀 표를 복사해 붙여넣어 주세요." : "파일을 읽지 못했습니다. 엑셀 표를 복사해 붙여넣어 보세요."); }
+};
+$("parseBtn").onclick = () => {
+  const t = $("pasteIn").value.trim();
+  if (!t) { msg("파일을 올리거나 일정을 붙여넣어 주세요."); return; }
+  preview(SchedParser.parseText(t, { year: new Date().getFullYear() }), "");
+};
+function preview(r, fallbackTitle) {
+  parsed = r;
+  if (!r.meetings.length) { $("preview").hidden = true; msg("미팅을 찾지 못했습니다. 시간(09:10)과 날짜(26.11.05 또는 11/5)가 들어 있는지 확인해 주세요."); return; }
+  $("preview").hidden = false;
+  $("titleIn").value = r.title || fallbackTitle || "새 NDR 일정";
+  let last = "", html = "";
+  r.meetings.forEach(m => {
+    if (m.date !== last) { html += `<div class="pd">${md(m.date)}(${dow(m.date)})</div>`; last = m.date; }
+    html += `<div class="pm"><span>${m.start}~${m.end}</span><span><b>${esc(m.org)}</b> ${esc(m.contact)} ${m.loc ? "· " + esc(m.loc) : ""} ${m.brokers.length ? "· " + esc(m.brokers.join("/")) : ""}</span></div>`;
+  });
+  $("prevList").innerHTML = html;
+  const days = new Set(r.meetings.map(m => m.date)).size;
+  $("prevWarn").textContent = `${days}일 · 미팅 ${r.meetings.length}건을 찾았습니다.` + (r.warnings.length ? ` 건너뛴 줄 ${r.warnings.length}개: ${r.warnings.slice(0, 2).join(" / ")}` : "");
+  $("preview").scrollIntoView({ behavior: "smooth", block: "start" });
+}
+$("createBtn").onclick = () => {
+  if (!parsed) return;
+  const id = "s" + Date.now().toString(36);
+  const meetings = parsed.meetings.map((m, i) => ({ id: "m" + i.toString(36) + Math.random().toString(36).slice(2, 5), ...m }));
+  S.schedules.unshift({ id, title: $("titleIn").value.trim() || "새 NDR 일정", meetings, createdAt: Date.now() });
+  S.cur = id; saveNow(); resetImport();
+  ui.day = null; ui.broker = "전체"; ui.open = new Set();
+  show("sched"); renderSched(); msg("일정을 만들었습니다.", true);
+};
+
+/* ---------- 일정 화면 ---------- */
+const ui = { day: null, broker: "전체", open: new Set(), first: true };
+function dates(s) { return [...new Set(s.meetings.map(m => m.date))].sort(); }
+function pickDay(s) { const ds = dates(s), t = todayStr(); return ds.includes(t) ? t : (ds.find(d => d > t) || ds[ds.length - 1]); }
+function renderSched() {
+  const s = cur(); if (!s) { show("import"); return; }
+  show("sched");
+  const ds = dates(s);
+  if (!ui.day || !ds.includes(ui.day)) ui.day = pickDay(s);
+  $("sTitle").innerHTML = esc(s.title).replace(/^(.+?)(\s*NDR)/i, "<span>$1</span>$2");
+  $("sRange").textContent = `${ds[0].replace(/-/g, ".")} – ${md(ds[ds.length - 1])} · ${ds.length}일`;
+  // 다음 미팅
+  const now = new Date(); const nx = s.meetings.find(m => kst(m.date, m.end) > now);
+  $("stats").innerHTML = `<div class="stat"><b>${ds.length}</b><small>일정 (일)</small></div><div class="stat"><b>${s.meetings.length}</b><small>미팅</small></div>
+    <div class="stat"><b style="font-size:15px">${nx ? md(nx.date) + " " + nx.start : "완료"}</b><small>${nx ? esc(nx.org) : "전 일정 종료"}</small></div>`;
+  $("tabs").innerHTML = ds.map(d => { const n = s.meetings.filter(m => m.date === d).length; return `<button class="tab" type="button" role="tab" data-d="${d}" aria-selected="${d === ui.day}"><span class="d">${md(d)}(${dow(d)})</span><span class="n">${n}개 미팅</span></button>`; }).join("");
+  $("tabs").querySelectorAll(".tab").forEach(b => b.onclick = () => { ui.day = b.dataset.d; renderSched(); });
+  const brokers = [...new Set(s.meetings.flatMap(m => m.brokers))];
+  $("filters").innerHTML = brokers.length ? ["전체", ...brokers].map(b => { const c = b === "전체" ? s.meetings.length : s.meetings.filter(m => m.brokers.includes(b)).length; return `<button class="chip" type="button" data-b="${esc(b)}" aria-pressed="${b === ui.broker}">${esc(b)} ${c}</button>`; }).join("") : "";
+  $("filters").querySelectorAll(".chip").forEach(c => c.onclick = () => { ui.broker = c.dataset.b; renderSched(); });
+  renderTimeline(s); paintSum();
+}
+function renderTimeline(s) {
+  const tl = $("timeline"); const now = new Date();
+  const ms = s.meetings.filter(m => m.date === ui.day && (ui.broker === "전체" || m.brokers.includes(ui.broker)));
+  if (!ms.length) { tl.innerHTML = `<div class="empty">${md(ui.day)}(${dow(ui.day)})에는 ${esc(ui.broker)} 담당 미팅이 없습니다.</div>`; return; }
+  let html = ""; let prev = null;
+  for (const m of ms) {
+    if (prev && ui.broker === "전체" && prev.end <= "12:30" && m.start >= "12:30" && m.start > prev.end) html += `<div class="lunch">점심</div>`;
+    if (ui.first && now >= kst(m.date, m.start) && now < kst(m.date, m.end)) ui.open.add(m.id);
+    html += card(s, m); prev = m;
+  }
+  ui.first = false;
+  tl.innerHTML = html; wire(s); refreshState(); syncBadges();
+}
+function card(s, m) {
+  const n = note(s.id, m.id), open = ui.open.has(m.id);
+  const loc = m.loc ? `<span>${esc(m.loc)} <a class="b sm" href="https://map.naver.com/p/search/${encodeURIComponent(m.loc.replace(/\s?\d+층$/, ""))}" target="_blank" rel="noopener">지도</a></span>` : "";
+  const tel = m.tel ? `<span><span class="num">${esc(m.tel)}</span> <button class="b sm" type="button" data-copy="${esc(m.tel)}">복사</button></span>` : "";
+  return `<article class="mtg ${open ? "open" : ""}" data-id="${m.id}" data-d="${m.date}" data-s="${m.start}" data-e="${m.end}">
+    <div class="time"><span class="s">${m.start}</span><span class="e">~ ${m.end}</span></div>
+    <div class="body">
+      <div><span class="org">${esc(m.org)}</span><span class="badge" hidden>진행 중</span></div>
+      <div class="info">${m.contact ? `<strong>${esc(m.contact)}</strong>` : ""}${tel}${loc}</div>
+      ${m.brokers.length ? `<div class="bks">${m.brokers.map(b => `<span class="bk">${esc(b)}</span>`).join("")}</div>` : ""}
+      <div class="notebar"><button class="b" type="button" data-toggle="${m.id}" aria-expanded="${open}">기록</button><span class="nb" data-badge="${m.id}"></span></div>
+      <div class="panel" data-panel="${m.id}" ${open ? "" : "hidden"}>
+        <div class="row"><button class="b rec" type="button" data-rec="${m.id}">받아쓰기 시작</button><span class="st" data-rst="${m.id}"></span></div>
+        <h4>녹취 (자동 받아쓰기, 직접 수정 가능)</h4>
+        <textarea class="tr" id="tr-${m.id}" data-tr="${m.id}" rows="5" placeholder="받아쓰기를 시작하면 여기에 [분:초]와 함께 적힙니다.">${esc(n.tr)}</textarea>
+        <div class="st" id="int-${m.id}"></div>
+        <div class="row"><button class="b pri" type="button" data-ai="${m.id}">AI로 노트 정리</button><span class="st" data-ast="${m.id}"></span></div>
+        <h4>메모</h4>
+        <textarea class="note" id="note-${m.id}" data-note="${m.id}" rows="6" placeholder="질문, 회사 답변, 투자자 반응, 후속 확인할 것">${esc(n.note)}</textarea>
+      </div>
+    </div></article>`;
+}
+function wire(s) {
+  const tl = $("timeline");
+  tl.querySelectorAll("[data-toggle]").forEach(b => b.onclick = () => {
+    const id = b.dataset.toggle, p = tl.querySelector(`[data-panel="${id}"]`), open = p.hidden;
+    p.hidden = !open; b.setAttribute("aria-expanded", open); b.closest(".mtg").classList.toggle("open", open);
+    open ? ui.open.add(id) : ui.open.delete(id);
+  });
+  tl.querySelectorAll("[data-tr]").forEach(t => t.oninput = () => { const n = note(s.id, t.dataset.tr); n.tr = t.value; n.at = Date.now(); saveSoon(); syncBadges(); });
+  tl.querySelectorAll("[data-note]").forEach(t => t.oninput = () => { const n = note(s.id, t.dataset.note); n.note = t.value; n.at = Date.now(); saveSoon(); syncBadges(); });
+  tl.querySelectorAll("[data-rec]").forEach(b => b.onclick = () => (R.on && R.mid === b.dataset.rec) ? stopRec() : startRec(s.id, b.dataset.rec));
+  tl.querySelectorAll("[data-ai]").forEach(b => b.onclick = () => noteAI(s.id, b.dataset.ai, b));
+  tl.querySelectorAll("[data-copy]").forEach(b => b.onclick = () => copy(b.dataset.copy, b));
+  paintRecButtons();
+}
+function refreshState() {
+  const now = new Date();
+  document.querySelectorAll(".mtg").forEach(el => {
+    const a = kst(el.dataset.d, el.dataset.s), z = kst(el.dataset.d, el.dataset.e);
+    const isNow = now >= a && now < z; el.classList.toggle("now", isNow); el.classList.toggle("done", now >= z);
+    el.querySelector(".badge").hidden = !isNow;
+  });
+}
+function syncBadges() {
+  const s = cur(); if (!s) return;
+  document.querySelectorAll("[data-badge]").forEach(b => {
+    const n = note(s.id, b.dataset.badge), p = [];
+    if (n.tr.trim()) p.push("녹취 있음"); if (n.note.trim()) p.push("메모 있음");
+    b.textContent = p.join(" · ");
+  });
+}
+async function copy(text, btn, label) {
+  const l = label || btn.textContent;
+  try { await navigator.clipboard.writeText(text); btn.textContent = "복사됨"; }
+  catch (e) { btn.textContent = "복사 실패"; }
+  setTimeout(() => btn.textContent = l, 1500);
+}
+
+/* ---------- 받아쓰기 ---------- */
+const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+const R = { on: false, sid: null, mid: null, rec: null, startAt: 0, interim: "", lastHeard: 0, restarts: 0, wake: null, tick: null };
+function paintRecButtons() {
+  document.querySelectorAll("[data-rec]").forEach(b => {
+    const me = R.on && R.mid === b.dataset.rec;
+    b.textContent = me ? "받아쓰기 정지" : "받아쓰기 시작";
+    b.disabled = !SR;
+    const t = $("tr-" + b.dataset.rec); if (t) t.readOnly = me;
+  });
+  if (!SR) document.querySelectorAll("[data-rst]").forEach(e => e.textContent = "이 브라우저는 받아쓰기를 지원하지 않습니다. 갤럭시는 크롬, 아이폰은 사파리로 열어주세요.");
+}
+function rstatus(t) { const e = document.querySelector(`[data-rst="${R.mid}"]`); if (e) e.textContent = t; }
+async function startRec(sid, mid) {
+  if (!SR) return;
+  if (R.on) stopRec();
+  const s = S.schedules.find(x => x.id === sid), m = s.meetings.find(x => x.id === mid);
+  const n = note(sid, mid);
+  n.tr = (n.tr.trim() ? n.tr.replace(/\s+$/, "") + "\n\n" : "") + `── 받아쓰기 ${hhmm()} ──\n`;
+  Object.assign(R, { on: true, sid, mid, startAt: Date.now(), interim: "", lastHeard: Date.now(), restarts: 0 });
+  const rec = new SR(); rec.lang = "ko-KR"; rec.continuous = true; rec.interimResults = true; R.rec = rec;
+  rec.onresult = e => {
+    let interim = "";
+    for (let i = e.resultIndex; i < e.results.length; i++) {
+      const t = e.results[i][0].transcript.trim();
+      if (e.results[i].isFinal) { if (t) { n.tr += `[${fmt(Date.now() - R.startAt)}] ${t}\n`; n.at = Date.now(); saveSoon(); } }
+      else interim += t + " ";
+    }
+    R.interim = interim; R.lastHeard = Date.now(); R.restarts = 0;
+    const ta = $("tr-" + mid); if (ta) { ta.value = n.tr; ta.scrollTop = ta.scrollHeight; }
+    const ie = $("int-" + mid); if (ie) ie.textContent = interim ? "듣는 중: " + interim : "";
+    rstatus("받아쓰는 중"); syncBadges();
+  };
+  rec.onerror = e => {
+    if (e.error === "not-allowed" || e.error === "service-not-allowed") { stopRec(); msg("마이크 권한이 거부되었습니다. 브라우저 설정에서 이 사이트의 마이크를 허용해 주세요."); }
+    else if (e.error === "network") rstatus("네트워크가 불안정합니다. 다시 연결 중…");
+  };
+  rec.onend = () => {
+    if (!R.on || R.rec !== rec) return;
+    if (++R.restarts > 8) { rstatus("받아쓰기가 멈췄습니다. 정지 후 다시 시작해 주세요."); return; }
+    setTimeout(() => { if (R.on && R.rec === rec) { try { rec.start(); } catch (err) { rstatus("다시 시작하지 못했습니다. 정지 후 다시 눌러주세요."); } } }, 300);
+  };
+  try { rec.start(); } catch (e) { R.on = false; msg("받아쓰기를 시작하지 못했습니다. 페이지를 새로고침한 뒤 다시 시도해 주세요."); return; }
+  try { R.wake = await navigator.wakeLock?.request("screen"); } catch (e) { }
+  $("recBar").hidden = false; $("recLabel").textContent = `${m.org} 받아쓰는 중`;
+  clearInterval(R.tick);
+  R.tick = setInterval(() => { $("recClock").textContent = fmt(Date.now() - R.startAt); if (Date.now() - R.lastHeard > 45000) rstatus("45초 넘게 인식된 말이 없습니다. 휴대폰을 화자 가까이 두세요."); }, 1000);
+  const ta = $("tr-" + mid); if (ta) ta.value = n.tr;
+  rstatus("받아쓰는 중 · 화면을 켜 두세요"); paintRecButtons();
+}
+function stopRec() {
+  if (!R.on) return;
+  const n = note(R.sid, R.mid);
+  if (R.interim.trim()) n.tr += `[${fmt(Date.now() - R.startAt)}] ${R.interim.trim()}\n`;
+  R.on = false; try { R.rec.stop(); } catch (e) { }
+  clearInterval(R.tick); try { R.wake && R.wake.release(); } catch (e) { } R.wake = null;
+  n.at = Date.now(); saveNow();
+  const ta = $("tr-" + R.mid); if (ta) ta.value = n.tr;
+  const ie = $("int-" + R.mid); if (ie) ie.textContent = "";
+  rstatus("저장했습니다. 'AI로 노트 정리'로 주요 내용을 뽑을 수 있습니다.");
+  $("recBar").hidden = true; paintRecButtons(); syncBadges();
+}
+$("recStop").onclick = stopRec;
+document.addEventListener("visibilitychange", async () => {
+  if (document.visibilityState === "visible" && R.on) { try { R.wake = await navigator.wakeLock?.request("screen"); } catch (e) { } try { R.rec.start(); } catch (e) { } }
+});
+
+/* ---------- AI 정리 ---------- */
+async function askAI(prompt) {
+  const st = settings();
+  if (!st.key) { const e = new Error("nokey"); e.code = "nokey"; throw e; }
+  const r = await fetch("https://api.anthropic.com/v1/messages", {
+    method: "POST",
+    headers: { "content-type": "application/json", "x-api-key": st.key, "anthropic-version": "2023-06-01", "anthropic-dangerous-direct-browser-access": "true" },
+    body: JSON.stringify({ model: st.model || "claude-sonnet-5-5", max_tokens: 2500, messages: [{ role: "user", content: prompt }] })
+  });
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) { const e = new Error(j.error?.message || ("HTTP " + r.status)); e.code = "api"; throw e; }
+  return (j.content || []).map(c => c.text || "").join("").trim();
+}
+function meetingPrompt(s, m, n) {
+  return `셀사이드 애널리스트가 ${s.title}에서 기관투자자 ${m.org}${m.contact ? "(" + m.contact + ")" : ""}와 한 미팅 기록입니다.
+녹취는 음성 인식 결과라 오류가 섞여 있을 수 있습니다. 주요 내용 위주로 미팅 노트를 만드세요. 기록에 없는 내용은 지어내지 마세요.
+한국어 일반 텍스트, 마크다운 기호(#, **) 없이 아래 형식으로 짧게:
+[투자자 질문]
+- …
+[회사 답변 핵심(숫자·가이던스 포함)]
+- …
+[투자자 반응·톤]
+- …
+[후속 확인]
+- …
+
+[녹취]
+${(n.tr || "").slice(0, 60000) || "(없음)"}
+
+[애널리스트 메모]
+${n.note || "(없음)"}`;
+}
+async function noteAI(sid, mid, btn) {
+  const s = S.schedules.find(x => x.id === sid), m = s.meetings.find(x => x.id === mid), n = note(sid, mid);
+  const st = document.querySelector(`[data-ast="${mid}"]`) || {};
+  if (!n.tr.trim() && !n.note.trim()) { st.textContent = "정리할 녹취나 메모가 없습니다."; return false; }
+  const prompt = meetingPrompt(s, m, n);
+  btn.disabled = true; st.textContent = "정리하는 중…";
+  try {
+    const text = await askAI(prompt);
+    n.note = (n.note.trim() ? n.note.trim() + "\n\n" : "") + `── AI 정리 (${hhmm()}) ──\n` + text;
+    n.at = Date.now(); saveNow();
+    const ta = $("note-" + mid); if (ta) ta.value = n.note;
+    st.textContent = "메모에 추가했습니다."; syncBadges(); return true;
+  } catch (e) {
+    if (e.code === "nokey") { await copy(prompt, btn, "AI로 노트 정리"); st.textContent = "API 키가 없어 정리 요청문을 복사했습니다. Claude 앱에 붙여넣고 결과를 메모에 붙여넣으세요."; }
+    else st.textContent = "정리하지 못했습니다: " + e.message;
+    return false;
+  } finally { btn.disabled = false; }
+}
+
+/* ---------- 하루 요약 ---------- */
+const sumKey = (sid, d) => sid + "|" + d;
+function dayMeetings(s, d) { return s.meetings.filter(m => m.date === d); }
+function dayHasNotes(s, d) { return dayMeetings(s, d).some(m => { const n = note(s.id, m.id); return n.note.trim() || n.tr.trim(); }); }
+function dayEnded(s, d) { const ms = dayMeetings(s, d); return new Date() >= kst(d, ms[ms.length - 1].end); }
+function lastAt(s, d) { return Math.max(0, ...dayMeetings(s, d).map(m => note(s.id, m.id).at || 0)); }
+function dayPrompt(s, d) {
+  const body = dayMeetings(s, d).map(m => { const n = note(s.id, m.id); const t = n.note.trim() || n.tr.trim().slice(0, 8000); return t ? `### ${m.start}~${m.end} ${m.org} (${m.contact})\n${t}` : ""; }).filter(Boolean).join("\n\n");
+  return `당신은 한국 셀사이드 애널리스트의 NDR 미팅 기록을 정리하는 보조입니다.
+일정: ${s.title}. 날짜: ${d}(${dow(d)}). 아래는 기관투자자 미팅별 노트입니다.
+기록에 없는 내용은 지어내지 말고, 불분명하면 "기록상 불명확"이라고 쓰세요.
+다음 형식의 한국어 일반 텍스트로 간결하게 정리하세요(마크다운 기호 #, ** 쓰지 말 것):
+■ 오늘 한 줄 요약
+■ 기관별 핵심 (기관명: 주요 질문·관심사 / 반응 톤 긍정·중립·부정)
+■ 공통적으로 나온 질문 Top 3
+■ 회사·애널리스트 후속 확인 사항
+■ 투자 포인트·주가 관련 시사점
+
+${body}`;
+}
+function paintSum() {
+  const s = cur(); if (!s) return; const d = ui.day;
+  $("sumTitle").textContent = `${md(d)}(${dow(d)}) 요약`;
+  const sm = S.sums[sumKey(s.id, d)], tx = $("sumText"), st = $("sumState");
+  if (tx.dataset.busy === "1") return;
+  if (sm && sm.text) {
+    tx.hidden = false; tx.textContent = sm.text; $("sumRun").textContent = "다시 요약";
+    st.textContent = lastAt(s, d) > sm.at ? " · 요약 이후 기록이 바뀌었습니다" : ` · ${new Date(sm.at).toLocaleString("ko-KR", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" })} 작성`;
+  } else {
+    tx.hidden = true; $("sumRun").textContent = "하루 요약";
+    st.textContent = !dayHasNotes(s, d) ? " · 아직 기록이 없습니다" : dayEnded(s, d) ? (settings().key ? " · 요약 대기" : " · '하루 요약'을 누르세요") : " · 마지막 미팅이 끝나면 자동으로 요약합니다";
+  }
+}
+async function daySummary(s, d, btn) {
+  if (!dayHasNotes(s, d)) { $("sumState").textContent = " · 요약할 기록이 없습니다"; return; }
+  const prompt = dayPrompt(s, d), tx = $("sumText"), isCur = () => cur() === s && ui.day === d;
+  if (isCur()) { tx.hidden = false; tx.dataset.busy = "1"; tx.textContent = "정리하는 중…"; $("sumState").textContent = " · 요약 작성 중"; }
+  try {
+    const text = await askAI(prompt);
+    S.sums[sumKey(s.id, d)] = { text, at: Date.now() }; saveNow();
+  } catch (e) {
+    if (e.code === "nokey" && btn) { await copy(prompt, btn); if (isCur()) $("sumState").textContent = " · API 키가 없어 요약 요청문을 복사했습니다. Claude 앱에 붙여넣으세요."; }
+    else if (isCur()) $("sumState").textContent = " · 요약하지 못했습니다: " + e.message;
+    tx.dataset.busy = ""; if (!S.sums[sumKey(s.id, d)]) tx.hidden = true; return;
+  }
+  tx.dataset.busy = ""; if (isCur()) paintSum();
+}
+$("sumRun").onclick = e => { const s = cur(); if (s) daySummary(s, ui.day, e.currentTarget); };
+$("sumCopy").onclick = e => {
+  const s = cur(); if (!s) return; const d = ui.day, sm = S.sums[sumKey(s.id, d)];
+  const txt = `${s.title} ${md(d)}(${dow(d)})\n\n` + (sm ? sm.text + "\n\n" : "") + "[미팅별 기록]\n" +
+    dayMeetings(s, d).map(m => { const n = note(s.id, m.id); return `- ${m.start} ${m.org} (${m.contact})\n${n.note.trim() || n.tr.trim() || "(기록 없음)"}`; }).join("\n\n");
+  copy(txt, e.currentTarget);
+};
+const autoTried = {};
+async function maybeAuto() {
+  if (!settings().key) return;
+  for (const s of S.schedules) for (const d of dates(s)) {
+    const k = sumKey(s.id, d);
+    if (autoTried[k] || S.sums[k] || !dayEnded(s, d) || !dayHasNotes(s, d)) continue;
+    if (Date.now() - kst(d, "00:00") > 3 * 86400000) continue; // 오래된 날짜는 자동 요약하지 않음
+    autoTried[k] = true; await daySummary(s, d);
+  }
+}
+
+/* ---------- 일정 관리 ---------- */
+$("editText").onclick = () => {
+  const s = cur(); const box = $("editBox"); box.hidden = !box.hidden; if (box.hidden) return;
+  $("editArea").value = s.meetings.map(m => [m.date, m.start, m.end, m.org, m.contact, m.tel, m.loc, m.brokers.join("/")].join("\t")).join("\n");
+};
+$("saveEdit").onclick = () => {
+  const s = cur(); const old = new Map(s.meetings.map(m => [m.date + m.start, m.id])); const out = []; const bad = [];
+  $("editArea").value.split("\n").forEach((line, i) => {
+    if (!line.trim()) return;
+    const c = line.split("\t"); const date = SchedParser.normDate(c[0], new Date().getFullYear()), st = SchedParser.normTime(c[1]), en = SchedParser.normTime(c[2]);
+    if (!date || !st) { bad.push(i + 1); return; }
+    out.push({ id: old.get(date + st) || "m" + Math.random().toString(36).slice(2, 8), date, start: st, end: en || st, org: (c[3] || "").trim() || "(기관명 없음)", contact: (c[4] || "").trim(), tel: (c[5] || "").trim(), loc: (c[6] || "").trim(), brokers: (c[7] || "").split(/[\/,]/).map(x => x.trim()).filter(Boolean) });
+  });
+  if (!out.length) { msg("읽을 수 있는 줄이 없습니다."); return; }
+  out.sort((a, b) => (a.date + a.start).localeCompare(b.date + b.start));
+  s.meetings = out; saveNow(); $("editBox").hidden = true; renderSched();
+  msg(`미팅 ${out.length}건으로 저장했습니다.` + (bad.length ? ` ${bad.join(", ")}번째 줄은 날짜·시간을 읽지 못해 뺐습니다.` : ""), !bad.length);
+};
+$("delSched").onclick = function () {
+  if (this.dataset.arm !== "1") { this.dataset.arm = "1"; this.textContent = "정말 삭제 (메모 포함)"; setTimeout(() => { this.dataset.arm = ""; this.textContent = "이 일정 삭제"; }, 3500); return; }
+  const s = cur(); if (R.on && R.sid === s.id) stopRec();
+  S.schedules = S.schedules.filter(x => x.id !== s.id);
+  Object.keys(S.notes).forEach(k => { if (k.startsWith(s.id + "|")) delete S.notes[k]; });
+  Object.keys(S.sums).forEach(k => { if (k.startsWith(s.id + "|")) delete S.sums[k]; });
+  S.cur = S.schedules[0]?.id || null; saveNow(); this.dataset.arm = ""; this.textContent = "이 일정 삭제";
+  S.cur ? renderSched() : (resetImport(), show("import"));
+};
+$("exportBtn").onclick = () => {
+  saveNow();
+  const blob = new Blob([JSON.stringify({ app: "ndr-note", v: 1, exportedAt: new Date().toISOString(), data: S }, null, 1)], { type: "application/json" });
+  const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = `ndr-note-backup-${todayStr().replace(/-/g, "")}.json`;
+  document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
+};
+$("importBackup").onchange = async e => {
+  const f = e.target.files[0]; e.target.value = ""; if (!f) return;
+  try {
+    const j = JSON.parse(await f.text()); const d = j.data; if (!d || !Array.isArray(d.schedules)) throw 0;
+    d.schedules.forEach(s => { const i = S.schedules.findIndex(x => x.id === s.id); i >= 0 ? S.schedules[i] = s : S.schedules.push(s); });
+    Object.entries(d.notes || {}).forEach(([k, v]) => { if (!S.notes[k] || (v.at || 0) > (S.notes[k].at || 0)) S.notes[k] = v; });
+    Object.entries(d.sums || {}).forEach(([k, v]) => { if (!S.sums[k] || v.at > S.sums[k].at) S.sums[k] = v; });
+    S.cur = S.cur || S.schedules[0]?.id; saveNow(); renderSched(); msg(`백업에서 일정 ${d.schedules.length}개를 불러왔습니다.`, true);
+  } catch (err) { msg("백업 파일을 읽지 못했습니다."); }
+};
+
+/* ---------- 시작 ---------- */
+if (S.schedules.length) { if (!cur()) S.cur = S.schedules[0].id; renderSched(); } else show("import");
+setInterval(() => { if (!$("schedView").hidden) { refreshState(); if ($("sumText").dataset.busy !== "1") paintSum(); } maybeAuto(); }, 60000);
+setTimeout(maybeAuto, 1500);
