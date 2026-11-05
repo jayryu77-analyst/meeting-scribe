@@ -110,3 +110,6 @@ textarea{font:inherit;font-size:15px;line-height:1.6;color:var(--ink);background
 .meter{width:70px;height:8px;border-radius:4px;background:#ffffff33;overflow:hidden;flex:none}
 .meter i{display:block;height:100%;width:0;background:var(--ok);transition:width .1s}
 @media (min-width:1000px){.wrap{max-width:920px}}
+
+.chip2{font-size:12px;padding:5px 10px;color:var(--ok);border-color:var(--ok)}
+.chip2[data-err="1"]{color:var(--rec);border-color:var(--rec)}

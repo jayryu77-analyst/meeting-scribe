@@ -16,7 +16,7 @@ const DB_KEY = "ndrnote-v1", SET_KEY = "ndrnote-settings";
 function loadDB() { try { const v = JSON.parse(localStorage.getItem(DB_KEY) || "null"); if (v && v.schedules) return v; } catch (e) { } return { schedules: [], notes: {}, sums: {}, cur: null }; }
 let S = loadDB();
 let saveT = null;
-function saveNow() { try { localStorage.setItem(DB_KEY, JSON.stringify(S)); } catch (e) { msg("저장 공간이 부족합니다. 백업 후 오래된 일정을 지워주세요."); } }
+function saveNow() { try { localStorage.setItem(DB_KEY, JSON.stringify(S)); if (window.Sync) Sync.soon(); } catch (e) { msg("저장 공간이 부족합니다. 백업 후 오래된 일정을 지워주세요."); } }
 function saveSoon() { clearTimeout(saveT); saveT = setTimeout(saveNow, 700); }
 window.addEventListener("pagehide", saveNow);
 document.addEventListener("visibilitychange", () => { if (document.visibilityState === "hidden") saveNow(); });
@@ -43,11 +43,11 @@ function fillSel() {
 $("schedSel").onchange = e => { S.cur = e.target.value; saveNow(); ui.day = null; ui.broker = "전체"; renderSched(); };
 $("newBtn").onclick = () => { resetImport(); show("import"); };
 $("cancelImport").onclick = () => { show("sched"); renderSched(); };
-$("setBtn").onclick = () => { const st = settings(); $("keyIn").value = st.key || ""; $("modelIn").value = st.model || ""; $("sumUrlIn").value = sumUrl(); $("recAppIn").value = st.recApp || "browser"; $("gainIn").value = String(st.gain || 1); fillMics(st.micId); $("deskSet").hidden = !DESKTOP; show("set"); };
+$("setBtn").onclick = () => { const st = settings(); $("keyIn").value = st.key || ""; $("modelIn").value = st.model || ""; $("sumUrlIn").value = sumUrl(); $("recAppIn").value = st.recApp || "browser"; $("gainIn").value = String(st.gain || 1); fillMics(st.micId); $("deskSet").hidden = !DESKTOP; $("syncRepoIn").value = st.syncRepo || ""; $("syncTokenIn").value = st.syncToken || ""; $("syncPassIn").value = st.syncPass || ""; Sync.paint(); show("set"); };
 $("closeSet").onclick = () => S.schedules.length ? (show("sched"), renderSched()) : show("import");
 $("saveSet").onclick = () => {
-  try { localStorage.setItem(SET_KEY, JSON.stringify({ key: $("keyIn").value.trim(), model: $("modelIn").value.trim(), sumUrl: $("sumUrlIn").value.trim(), recApp: $("recAppIn").value, gain: +$("gainIn").value || 1, micId: $("micIn").value })); } catch (e) { }
-  msg("설정을 저장했습니다.", true); $("closeSet").onclick();
+  try { localStorage.setItem(SET_KEY, JSON.stringify({ ...settings(), key: $("keyIn").value.trim(), model: $("modelIn").value.trim(), sumUrl: $("sumUrlIn").value.trim(), recApp: $("recAppIn").value, gain: +$("gainIn").value || 1, micId: $("micIn").value, syncRepo: $("syncRepoIn").value.trim().replace(/^https?:\/\/github.com\//, "").replace(/\/$/, ""), syncToken: $("syncTokenIn").value.trim(), syncPass: $("syncPassIn").value })); } catch (e) { }
+  msg("설정을 저장했습니다.", true); $("closeSet").onclick(); Sync.now();
 };
 
 /* ---------- 일정 가져오기 ---------- */
@@ -102,7 +102,7 @@ $("createBtn").onclick = () => {
   if (!parsed) return;
   const id = "s" + Date.now().toString(36);
   const meetings = parsed.meetings.map((m, i) => ({ id: "m" + i.toString(36) + Math.random().toString(36).slice(2, 5), ...m }));
-  S.schedules.unshift({ id, title: $("titleIn").value.trim() || "새 NDR 일정", meetings, createdAt: Date.now() });
+  S.schedules.unshift({ id, title: $("titleIn").value.trim() || "새 NDR 일정", meetings, createdAt: Date.now(), updatedAt: Date.now() });
   S.cur = id; saveNow(); resetImport();
   ui.day = null; ui.broker = "전체"; ui.open = new Set();
   show("sched"); renderSched(); msg("일정을 만들었습니다.", true);
@@ -548,13 +548,13 @@ $("saveEdit").onclick = () => {
   });
   if (!out.length) { msg("읽을 수 있는 줄이 없습니다."); return; }
   out.sort((a, b) => (a.date + a.start).localeCompare(b.date + b.start));
-  s.meetings = out; saveNow(); $("editBox").hidden = true; renderSched();
+  s.meetings = out; s.updatedAt = Date.now(); saveNow(); $("editBox").hidden = true; renderSched();
   msg(`미팅 ${out.length}건으로 저장했습니다.` + (bad.length ? ` ${bad.join(", ")}번째 줄은 날짜·시간을 읽지 못해 뺐습니다.` : ""), !bad.length);
 };
 $("delSched").onclick = function () {
   if (this.dataset.arm !== "1") { this.dataset.arm = "1"; this.textContent = "정말 삭제 (메모 포함)"; setTimeout(() => { this.dataset.arm = ""; this.textContent = "이 일정 삭제"; }, 3500); return; }
   const s = cur(); if (R.on && R.sid === s.id) stopRec();
-  S.schedules = S.schedules.filter(x => x.id !== s.id);
+  S.schedules = S.schedules.filter(x => x.id !== s.id); (S.deleted = S.deleted || {})[s.id] = Date.now();
   Object.keys(S.notes).forEach(k => { if (k.startsWith(s.id + "|")) delete S.notes[k]; });
   Object.keys(S.sums).forEach(k => { if (k.startsWith(s.id + "|")) delete S.sums[k]; });
   S.cur = S.schedules[0]?.id || null; saveNow(); this.dataset.arm = ""; this.textContent = "이 일정 삭제";
@@ -741,8 +741,120 @@ async function checkShared() {
   } catch (e) { msg("공유받은 내용을 읽지 못했습니다. 복사해서 '녹취 넣기'로 붙여넣어 주세요."); }
 }
 
+
+/* ---------- 기기 간 동기화 (GitHub 비공개 저장소 · 암호화) ---------- */
+const Sync = (() => {
+  const FILE = "ndr-note-data.json";
+  let timer = null, busy = false, again = false, lastAt = 0, lastErr = "";
+  const cfg = () => { const st = settings(); return st.syncRepo && st.syncToken ? st : null; };
+  const b64e = bytes => { let s = ""; for (let i = 0; i < bytes.length; i += 0x8000) s += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000)); return btoa(s); };
+  const b64d = str => Uint8Array.from(atob(str.replace(/\s/g, "")), c => c.charCodeAt(0));
+  async function keyFor(pass, salt) {
+    const base = await crypto.subtle.importKey("raw", new TextEncoder().encode(pass), "PBKDF2", false, ["deriveKey"]);
+    return crypto.subtle.deriveKey({ name: "PBKDF2", salt: new TextEncoder().encode("ndr-note|" + salt), iterations: 150000, hash: "SHA-256" }, base, { name: "AES-GCM", length: 256 }, false, ["encrypt", "decrypt"]);
+  }
+  async function pack(obj, c) {
+    const json = JSON.stringify(obj);
+    if (!c.syncPass) return b64e(new TextEncoder().encode(JSON.stringify({ enc: false, data: obj })));
+    const iv = crypto.getRandomValues(new Uint8Array(12));
+    const ct = new Uint8Array(await crypto.subtle.encrypt({ name: "AES-GCM", iv }, await keyFor(c.syncPass, c.syncRepo), new TextEncoder().encode(json)));
+    return b64e(new TextEncoder().encode(JSON.stringify({ enc: true, iv: b64e(iv), data: b64e(ct) })));
+  }
+  async function unpack(b64, c) {
+    const wrap = JSON.parse(new TextDecoder().decode(b64d(b64)));
+    if (!wrap.enc) return wrap.data;
+    if (!c.syncPass) throw new Error("저장소 데이터가 암호화돼 있습니다. 동기화 비밀번호를 넣어주세요.");
+    try { const pt = await crypto.subtle.decrypt({ name: "AES-GCM", iv: b64d(wrap.iv) }, await keyFor(c.syncPass, c.syncRepo), b64d(wrap.data)); return JSON.parse(new TextDecoder().decode(pt)); }
+    catch (e) { throw new Error("동기화 비밀번호가 다른 기기와 다릅니다."); }
+  }
+  async function gh(c, path, opt = {}) {
+    const r = await fetch(`https://api.github.com/repos/${c.syncRepo}/${path}`, { ...opt, headers: { "Authorization": "Bearer " + c.syncToken, "Accept": "application/vnd.github+json", "X-GitHub-Api-Version": "2022-11-28", ...(opt.headers || {}) }, cache: "no-store" });
+    return r;
+  }
+  async function pull(c) {
+    const r = await gh(c, "contents/" + FILE);
+    if (r.status === 404) { const rr = await gh(c, ""); if (rr.status === 404 || rr.status === 401 || rr.status === 403) throw new Error(rr.status === 404 ? "저장소를 찾을 수 없습니다. 주소와 토큰 권한을 확인하세요." : "토큰이 거부되었습니다. 토큰을 확인하세요."); return { sha: null, data: null }; }
+    if (r.status === 401 || r.status === 403) throw new Error("토큰이 거부되었습니다. 만료됐거나 권한(Contents 읽기·쓰기)이 없습니다.");
+    if (!r.ok) throw new Error("GitHub 응답 오류 " + r.status);
+    const j = await r.json();
+    let content = j.content;
+    if (!content) { const b = await gh(c, "git/blobs/" + j.sha); content = (await b.json()).content; }
+    return { sha: j.sha, data: await unpack(content, c) };
+  }
+  function merge(local, remote) {
+    if (!remote) return local;
+    const out = { schedules: [], notes: { ...local.notes }, sums: { ...local.sums }, deleted: { ...(remote.deleted || {}), ...(local.deleted || {}) }, cur: local.cur };
+    Object.entries(remote.deleted || {}).forEach(([k, v]) => { out.deleted[k] = Math.max(v, out.deleted[k] || 0); });
+    const ts = s => s.updatedAt || s.createdAt || 0;
+    const map = new Map();
+    [...(remote.schedules || []), ...local.schedules].forEach(s => { const o = map.get(s.id); if (!o || ts(s) >= ts(o)) map.set(s.id, s); });
+    out.schedules = [...map.values()].filter(s => !(out.deleted[s.id] >= ts(s))).sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+    Object.entries(remote.notes || {}).forEach(([k, v]) => { const o = out.notes[k]; if (!o || (v.at || 0) > (o.at || 0)) out.notes[k] = v; });
+    Object.entries(remote.sums || {}).forEach(([k, v]) => { const o = out.sums[k]; if (!o || (v.at || 0) > (o.at || 0)) out.sums[k] = v; });
+    const alive = new Set(out.schedules.map(s => s.id));
+    [out.notes, out.sums].forEach(o => Object.keys(o).forEach(k => { if (!alive.has(k.split("|")[0])) delete o[k]; }));
+    if (!alive.has(out.cur)) out.cur = out.schedules[0]?.id || null;
+    return out;
+  }
+  const strip = d => ({ schedules: d.schedules, notes: d.notes, sums: d.sums, deleted: d.deleted || {} });
+  async function run() {
+    const c = cfg(); if (!c) return;
+    if (busy) { again = true; return; }
+    if (R.on) { again = true; return; }   // 받아쓰는 중에는 화면을 건드리지 않음
+    busy = true; paint("동기화 중…");
+    try {
+      for (let attempt = 0; attempt < 3; attempt++) {
+        const { sha, data } = await pull(c);
+        const before = JSON.stringify(strip(S));
+        const merged = merge(S, data);
+        const changedLocal = JSON.stringify(strip(merged)) !== before;
+        if (changedLocal) { S = merged; try { localStorage.setItem(DB_KEY, JSON.stringify(S)); } catch (e) { } refreshUI(); }
+        if (data && JSON.stringify(strip(data)) === JSON.stringify(strip(merged))) break;   // 저장소가 이미 최신
+        const body = { message: "sync " + new Date().toISOString(), content: await pack(strip(merged), c) };
+        if (sha) body.sha = sha;
+        const w = await gh(c, "contents/" + FILE, { method: "PUT", body: JSON.stringify(body), headers: { "Content-Type": "application/json" } });
+        if (w.ok) break;
+        if (w.status === 409 || w.status === 422) continue;   // 다른 기기가 먼저 썼음 → 다시 받아 합치기
+        throw new Error(w.status === 403 ? "토큰에 쓰기 권한이 없습니다(Contents: Read and write)." : "GitHub 저장 오류 " + w.status);
+      }
+      lastAt = Date.now(); lastErr = "";
+    } catch (e) { lastErr = e.message || "동기화 실패 (인터넷 연결 확인)"; }
+    busy = false; paint();
+    if (again) { again = false; setTimeout(run, 1500); }
+  }
+  function refreshUI() {
+    if (!$("schedView").hidden) { const open = document.activeElement && /TEXTAREA|INPUT/.test(document.activeElement.tagName); if (!open) renderSched(); else syncBadges(); }
+    else if (!$("importView").hidden && S.schedules.length && !parsed) renderSched();
+    fillSel();
+  }
+  function paint(t) {
+    const el = $("syncSt"), chip = $("syncChip"); const c = cfg();
+    const txt = t || (lastErr ? "동기화 오류: " + lastErr : lastAt ? "동기화됨 " + new Date(lastAt).toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit", hour12: false }) : c ? "동기화 대기" : "동기화 꺼짐");
+    if (el) el.textContent = txt;
+    if (chip) { chip.hidden = !c; chip.textContent = lastErr ? "동기화 오류" : t ? "동기화 중" : "동기화됨"; chip.dataset.err = lastErr ? "1" : ""; chip.title = txt; }
+  }
+  return {
+    now: () => { clearTimeout(timer); run(); },
+    soon: () => { if (!cfg()) return; clearTimeout(timer); timer = setTimeout(run, 4000); },
+    paint: () => paint(),
+    start: () => {
+      paint(); run();
+      document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") run(); });
+      setInterval(() => { if (document.visibilityState === "visible") run(); }, 90000);
+      window.addEventListener("online", run);
+    }
+  };
+})();
+window.Sync = Sync;
+$("syncNow").onclick = () => {
+  try { localStorage.setItem(SET_KEY, JSON.stringify({ ...settings(), syncRepo: $("syncRepoIn").value.trim().replace(/^https?:\/\/github.com\//, "").replace(/\/$/, ""), syncToken: $("syncTokenIn").value.trim(), syncPass: $("syncPassIn").value })); } catch (e) { }
+  Sync.now();
+};
+$("syncChip").onclick = () => Sync.now();
+
 /* ---------- 시작 ---------- */
 if (S.schedules.length) { if (!cur()) S.cur = S.schedules[0].id; renderSched(); } else show("import");
 checkShared();
+Sync.start();
 setInterval(() => { if (!$("schedView").hidden) { refreshState(); if ($("sumText").dataset.busy !== "1") paintSum(); } maybeAuto(); }, 60000);
 setTimeout(maybeAuto, 1500);
