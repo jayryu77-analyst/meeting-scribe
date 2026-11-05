@@ -103,3 +103,10 @@ textarea{font:inherit;font-size:15px;line-height:1.6;color:var(--ink);background
 .inbox{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent)}
 .inboxbtn{justify-content:center;border-style:dashed;color:var(--accent)}
 #inMeeting{max-width:100%;font-size:15px;padding:8px}
+
+.desk{display:flex;flex-direction:column;gap:10px;border-top:1px dashed var(--line);border-bottom:1px dashed var(--line);padding:10px 0}
+.desk h3{margin:0}
+.sys{display:inline-flex;align-items:center;gap:5px;font-size:12.5px;color:var(--muted);cursor:pointer}
+.meter{width:70px;height:8px;border-radius:4px;background:#ffffff33;overflow:hidden;flex:none}
+.meter i{display:block;height:100%;width:0;background:var(--ok);transition:width .1s}
+@media (min-width:1000px){.wrap{max-width:920px}}

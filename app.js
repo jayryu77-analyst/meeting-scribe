@@ -43,10 +43,10 @@ function fillSel() {
 $("schedSel").onchange = e => { S.cur = e.target.value; saveNow(); ui.day = null; ui.broker = "전체"; renderSched(); };
 $("newBtn").onclick = () => { resetImport(); show("import"); };
 $("cancelImport").onclick = () => { show("sched"); renderSched(); };
-$("setBtn").onclick = () => { const st = settings(); $("keyIn").value = st.key || ""; $("modelIn").value = st.model || ""; $("sumUrlIn").value = sumUrl(); $("recAppIn").value = st.recApp || "browser"; show("set"); };
+$("setBtn").onclick = () => { const st = settings(); $("keyIn").value = st.key || ""; $("modelIn").value = st.model || ""; $("sumUrlIn").value = sumUrl(); $("recAppIn").value = st.recApp || "browser"; $("gainIn").value = String(st.gain || 1); fillMics(st.micId); $("deskSet").hidden = !DESKTOP; show("set"); };
 $("closeSet").onclick = () => S.schedules.length ? (show("sched"), renderSched()) : show("import");
 $("saveSet").onclick = () => {
-  try { localStorage.setItem(SET_KEY, JSON.stringify({ key: $("keyIn").value.trim(), model: $("modelIn").value.trim(), sumUrl: $("sumUrlIn").value.trim(), recApp: $("recAppIn").value })); } catch (e) { }
+  try { localStorage.setItem(SET_KEY, JSON.stringify({ key: $("keyIn").value.trim(), model: $("modelIn").value.trim(), sumUrl: $("sumUrlIn").value.trim(), recApp: $("recAppIn").value, gain: +$("gainIn").value || 1, micId: $("micIn").value })); } catch (e) { }
   msg("설정을 저장했습니다.", true); $("closeSet").onclick();
 };
 
@@ -218,7 +218,7 @@ function card(s, m) {
       ${m.brokers.length ? `<div class="bks">${m.brokers.map(b => `<span class="bk">${esc(b)}</span>`).join("")}</div>` : ""}
       <div class="notebar"><button class="b" type="button" data-toggle="${m.id}" aria-expanded="${open}">기록</button><span class="nb" data-badge="${m.id}"></span></div>
       <div class="panel" data-panel="${m.id}" ${open ? "" : "hidden"}>
-        <div class="row"><button class="b rec" type="button" data-rec="${m.id}">받아쓰기 시작</button><button class="b sm" type="button" data-alt="${m.id}"></button></div>
+        <div class="row"><button class="b rec" type="button" data-rec="${m.id}">받아쓰기 시작</button><button class="b sm" type="button" data-alt="${m.id}"></button>${DESKTOP ? `<label class="sys"><input type="checkbox" data-sys="${m.id}"> 컴퓨터 소리 포함 (줌·팀즈)</label>` : ""}</div>
         <div class="st" data-rst="${m.id}">${extStatus(n)}</div>
         <h4>녹취 (자동 받아쓰기 · 다른 녹음 앱 결과를 붙여넣어도 됩니다)</h4>
         <textarea class="tr" id="tr-${m.id}" data-tr="${m.id}" rows="5" placeholder="받아쓰기를 시작하면 여기에 [분:초]와 함께 적힙니다.">${esc(n.tr)}</textarea>
@@ -267,6 +267,60 @@ async function copy(text, btn, label) {
   setTimeout(() => btn.textContent = l, 1500);
 }
 
+
+/* ---------- PC: 마이크 선택·증폭·컴퓨터 소리(줌·팀즈) ---------- */
+const DESKTOP = !/Android|iPhone|iPad|Mobile/i.test(navigator.userAgent);
+const AU = { ctx: null, streams: [], track: null, an: null, raf: 0 };
+async function fillMics(sel) {
+  const box = $("micIn"); if (!navigator.mediaDevices?.enumerateDevices) return;
+  const devs = (await navigator.mediaDevices.enumerateDevices()).filter(d => d.kind === "audioinput");
+  box.innerHTML = `<option value="">기본 마이크</option>` + devs.filter(d => d.deviceId && d.deviceId !== "default").map((d, i) => `<option value="${esc(d.deviceId)}">${esc(d.label || "마이크 " + (i + 1))}</option>`).join("");
+  if (sel) box.value = sel;
+  $("micSt").textContent = devs.some(d => d.label) ? `${devs.length}개 찾음` : "이름을 보려면 '마이크 목록 불러오기'를 누르세요";
+}
+$("micLoad").onclick = async () => {
+  try { const st = await navigator.mediaDevices.getUserMedia({ audio: true }); st.getTracks().forEach(t => t.stop()); } catch (e) { $("micSt").textContent = "마이크 권한이 필요합니다"; return; }
+  fillMics($("micIn").value);
+};
+async function buildAudio(withSystem) {
+  teardownAudio();
+  const st = settings(), gain = +st.gain || 1;
+  if (gain <= 1 && !st.micId && !withSystem) return null;   // 기본 설정이면 브라우저 기본 마이크 그대로
+  try {
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    const dst = ctx.createMediaStreamDestination();
+    const comp = ctx.createDynamicsCompressor(); comp.threshold.value = -26; comp.knee.value = 18; comp.ratio.value = 5; comp.attack.value = 0.005; comp.release.value = 0.25;
+    const an = ctx.createAnalyser(); an.fftSize = 512;
+    comp.connect(dst); comp.connect(an);
+    const mic = await navigator.mediaDevices.getUserMedia({ audio: { deviceId: st.micId ? { exact: st.micId } : undefined, echoCancellation: true, noiseSuppression: true, autoGainControl: true } });
+    const hp = ctx.createBiquadFilter(); hp.type = "highpass"; hp.frequency.value = 90;
+    const g = ctx.createGain(); g.gain.value = gain;
+    ctx.createMediaStreamSource(mic).connect(hp).connect(g).connect(comp);
+    AU.streams.push(mic);
+    if (withSystem) {
+      try {
+        const ds = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: true });
+        const at = ds.getAudioTracks()[0];
+        if (at) { ctx.createMediaStreamSource(new MediaStream([at])).connect(comp); AU.streams.push(ds); msg("컴퓨터 소리도 함께 받아씁니다.", true); }
+        else { ds.getTracks().forEach(t => t.stop()); msg("소리가 공유되지 않았습니다. 공유 창에서 '오디오 공유'(또는 '탭 오디오 공유')를 켜고 다시 시작하세요."); }
+      } catch (e) { msg("화면·소리 공유를 취소해서 마이크만 받아씁니다."); }
+    }
+    Object.assign(AU, { ctx, track: dst.stream.getAudioTracks()[0], an });
+    meterLoop(); return AU.track;
+  } catch (e) { teardownAudio(); msg("선택한 마이크를 열지 못해 기본 마이크로 받아씁니다."); return null; }
+}
+function meterLoop() {
+  const m = $("meter"), bar = $("meterBar"); if (!AU.an) return; m.hidden = false;
+  const buf = new Uint8Array(AU.an.fftSize);
+  const tick = () => { if (!AU.an) return; AU.an.getByteTimeDomainData(buf); let pk = 0; for (const v of buf) pk = Math.max(pk, Math.abs(v - 128)); bar.style.width = Math.min(100, pk / 1.1) + "%"; AU.raf = requestAnimationFrame(tick); };
+  tick();
+}
+function teardownAudio() {
+  cancelAnimationFrame(AU.raf); AU.streams.forEach(st => st.getTracks().forEach(t => t.stop()));
+  try { AU.ctx && AU.ctx.close(); } catch (e) { }
+  Object.assign(AU, { ctx: null, streams: [], track: null, an: null }); const m = $("meter"); if (m) m.hidden = true;
+}
+
 /* ---------- 받아쓰기 ---------- */
 const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
 const R = { on: false, sid: null, mid: null, rec: null, startAt: 0, interim: "", lastHeard: 0, restarts: 0, wake: null, tick: null };
@@ -277,7 +331,7 @@ function paintRecButtons() {
     b.textContent = me ? "받아쓰기 정지" : REC_APPS[app].label;
     b.disabled = app === "browser" && !SR;
     const alt = document.querySelector(`[data-alt="${b.dataset.rec}"]`);
-    if (alt) { alt.textContent = app === "browser" ? "클로바노트로 녹음" : (me ? "받아쓰기 정지" : "앱 안에서 받아쓰기"); alt.hidden = app !== "browser" && !SR; }
+    if (alt) { alt.textContent = app === "browser" ? "클로바노트로 녹음" : (me ? "받아쓰기 정지" : "앱 안에서 받아쓰기"); alt.hidden = DESKTOP || (app !== "browser" && !SR); }
     const t = $("tr-" + b.dataset.rec); if (t) t.readOnly = me;
   });
   if (!SR && recApp() === "browser") document.querySelectorAll("[data-rst]").forEach(e => { if (!e.textContent) e.textContent = "이 브라우저는 받아쓰기를 지원하지 않습니다. 설정에서 녹음 방식을 클로바노트로 바꾸거나, 갤럭시는 크롬·아이폰은 사파리로 열어주세요."; });
@@ -290,6 +344,9 @@ async function startRec(sid, mid) {
   const n = note(sid, mid);
   n.tr = (n.tr.trim() ? n.tr.replace(/\s+$/, "") + "\n\n" : "") + `── 받아쓰기 ${hhmm()} ──\n`;
   Object.assign(R, { on: true, sid, mid, startAt: Date.now(), interim: "", lastHeard: Date.now(), active: false, lastEnd: Date.now(), fail: 0, lastErr: null });
+  const sysBox = document.querySelector(`[data-sys="${mid}"]`);
+  if (DESKTOP) await buildAudio(!!(sysBox && sysBox.checked));
+  if (!R.on) return;
   spawnRec();
   try { R.wake = await navigator.wakeLock?.request("screen"); } catch (e) { }
   $("recBar").hidden = false; $("recLabel").textContent = `${m.org} 받아쓰는 중`;
@@ -341,12 +398,13 @@ function spawnRec() {
     R.lastErr = null;
     setTimeout(() => { if (R.on && R.rec === rec) spawnRec(); }, delay);
   };
-  try { rec.start(); } catch (e) { setTimeout(() => { if (R.on && R.rec === rec) spawnRec(); }, 500); }
+  try { if (AU.track && AU.track.readyState === "live") { try { rec.start(AU.track); } catch (e2) { if (e2 && e2.name === "InvalidStateError") throw e2; rec.start(); } } else rec.start(); }
+  catch (e) { setTimeout(() => { if (R.on && R.rec === rec) spawnRec(); }, 500); }
 }
 function stopRec() {
   if (!R.on) return;
   const n = note(R.sid, R.mid);
-  R.on = false; commitInterim(n); try { R.rec.stop(); } catch (e) { }
+  R.on = false; commitInterim(n); try { R.rec.stop(); } catch (e) { } teardownAudio();
   clearInterval(R.tick); try { R.wake && R.wake.release(); } catch (e) { } R.wake = null;
   n.at = Date.now(); saveNow();
   const ta = $("tr-" + R.mid); if (ta) ta.value = n.tr;
