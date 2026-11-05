@@ -9,7 +9,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="미팅노트">
 <link rel="apple-touch-icon" href="icon-192.png">
-<link rel="stylesheet" href="style.css?v=18">
+<link rel="stylesheet" href="style.css?v=19">
 </head>
 <body>
 <div class="wrap">
@@ -56,13 +56,14 @@
   <!-- 일정 화면 -->
   <!-- 받은 녹취 넣기 -->
   <section class="card inbox" id="inbox" hidden>
-    <h2>녹취 넣기</h2>
+    <h2>녹취 올리기</h2>
     <p class="hint" id="inSrc"></p>
-    <textarea id="inText" rows="5" placeholder="클로바노트: ⋮ 메뉴 → '전체 음성 기록 텍스트 복사' 후 위 버튼 또는 여기에 붙여넣기"></textarea>
-    <div class="row"><button class="b" id="inPaste" type="button">클립보드에서 붙여넣기</button><label class="b file">텍스트 파일<input type="file" id="inFile" accept=".txt,text/plain"></label></div>
-    <label class="f">넣을 미팅<select id="inMeeting"></select></label>
+    <div class="row"><label class="b pri file">텍스트 파일 올리기 (여러 개)<input type="file" id="inFile" multiple accept=".txt,text/plain"></label><button class="b" id="inPaste" type="button">클립보드에서 붙여넣기</button></div>
+    <textarea id="inText" rows="5" placeholder="클로바노트: ⋮ 메뉴 → '전체 음성 기록 텍스트 복사' 후 여기에 붙여넣기"></textarea>
+    <div class="inlist" id="inList" hidden></div>
+    <label class="f" id="inMeetingBox">넣을 미팅<select id="inMeeting"></select></label>
     <p class="hint" id="inGuess"></p>
-    <div class="row"><button class="b pri" id="inAddAI" type="button">넣고 AI 정리</button><button class="b" id="inAdd" type="button">넣기</button><button class="b" id="inCancel" type="button">취소</button></div>
+    <div class="row"><button class="b pri" id="inAddAI" type="button">넣고 요약</button><button class="b" id="inAdd" type="button">넣기</button><button class="b" id="inCancel" type="button">취소</button></div>
   </section>
 
   <section id="schedView" hidden>
@@ -70,12 +71,14 @@
       <div><div class="eyebrow" id="sRange"></div><h2 id="sTitle"></h2></div>
     </div>
     <div class="stats" id="stats"></div>
-    <button class="b inboxbtn" id="openInbox" type="button">녹취 넣기 (클로바노트·녹음 앱)</button>
+    <button class="b inboxbtn" id="openInbox" type="button">녹취 올리기 (클로바노트 텍스트 파일 · 여러 개 한 번에)</button>
     <nav class="tabs" id="tabs" role="tablist"></nav>
     <div class="filters" id="filters"></div>
     <section class="sum" id="sumPanel">
-      <div class="sumhead"><div><b id="sumTitle"></b><span class="st" id="sumState"></span></div>
-        <div class="row"><button class="b pri" id="sendDay" type="button">정리 페이지로 보내기</button><button class="b" id="sumRun" type="button">하루 요약</button><button class="b" id="sumCopy" type="button">요약·노트 복사</button></div></div>
+      <div class="sumhead"><div class="row"><b>랩업</b>
+        <select id="wrapScope" aria-label="랩업 범위"><option value="day">이 날</option><option value="sched">이 일정 전체</option><option value="all">저장된 모든 일정</option></select>
+        <span class="st" id="sumState"></span></div></div>
+      <div class="row"><button class="b pri" id="sumRun" type="button">랩업 만들기</button><button class="b" id="sumImport" type="button">정리 결과 가져오기</button><button class="b" id="sumCopy" type="button">랩업·노트 복사</button></div>
       <p class="hint" id="sendHint" hidden></p>
       <div class="sumtext" id="sumText" hidden></div>
     </section>
@@ -85,8 +88,7 @@
       <div class="toolbody">
         <div class="row">
           <button class="b" id="editText" type="button">일정 텍스트로 수정</button>
-          <button class="b" id="sendAll" type="button">전체 기록 정리 페이지로 보내기</button>
-          <button class="b" id="exportBtn" type="button">백업 파일 저장</button>
+                    <button class="b" id="exportBtn" type="button">백업 파일 저장</button>
           <label class="b file">백업 불러오기<input type="file" id="importBackup" accept=".json,application/json"></label>
           <button class="b del" id="delSched" type="button">이 일정 삭제</button>
         </div>
@@ -123,7 +125,7 @@
     <p class="hint">API 키 없이 쓰는 방법입니다. "정리 페이지로 보내기"를 누르면 기록이 복사되고 이 주소가 열립니다. 각자 자기 Claude 계정으로 정리되며, 결과도 각자 계정에만 저장됩니다.</p>
     <label class="f">Claude API 키 (선택 · 넣으면 앱 안에서 바로 정리)<input type="password" id="keyIn" autocomplete="off" placeholder="sk-ant-..."></label>
     <label class="f">모델<input type="text" id="modelIn" placeholder="claude-sonnet-5-5"></label>
-    <p class="hint">키는 이 기기 브라우저에만 저장됩니다. 키가 없으면 "AI로 노트 정리"를 누를 때 휴대폰 공유창이 열립니다. Claude 앱을 고르면 그 앱에 로그인된 계정으로 정리됩니다(PC는 정리 요청문이 복사됩니다). AI 정리 시 해당 미팅의 녹취·메모가 Anthropic API로 전송됩니다.</p>
+    <p class="hint">키는 이 기기 브라우저에만 저장됩니다. 키가 없으면 "AI 요약"·"랩업 만들기"를 누를 때 기록이 복사되고 정리 페이지가 열립니다. 그 페이지에서 정리한 뒤 '앱으로 가져갈 결과 복사' → 이 앱의 '정리 결과 가져오기'를 누르면 요약이 각 미팅에 들어갑니다. 키를 넣으면 앱 안에서 바로 정리되며, 이때 녹취·메모가 Anthropic API로 전송됩니다.</p>
     <div class="row"><button class="b pri" id="saveSet" type="button">저장</button><button class="b" id="closeSet" type="button">닫기</button></div>
   </section>
 
@@ -135,9 +137,9 @@
   <button class="b" id="recStop" type="button">정지</button>
 </div>
 
-<script src="parser.js?v=18"></script>
-<script>window.APP_VERSION="18";</script>
-<script src="app.js?v=18"></script>
+<script src="parser.js?v=19"></script>
+<script>window.APP_VERSION="19";</script>
+<script src="app.js?v=19"></script>
 <script>if("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js",{updateViaCache:"none"}).catch(()=>{});</script>
 </body>
 </html>

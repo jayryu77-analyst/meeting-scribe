@@ -220,10 +220,12 @@ function card(s, m) {
       <div class="panel" data-panel="${m.id}" ${open ? "" : "hidden"}>
         <div class="row"><button class="b rec" type="button" data-rec="${m.id}">받아쓰기 시작</button><button class="b sm" type="button" data-alt="${m.id}"></button>${DESKTOP ? `<label class="sys"><input type="checkbox" data-sys="${m.id}"> 컴퓨터 소리 포함 (줌·팀즈)</label>` : ""}</div>
         <div class="st" data-rst="${m.id}">${extStatus(n)}</div>
+        <h4>요약</h4>
+        <textarea class="sumbox" id="sum-${m.id}" data-sum="${m.id}" rows="5" placeholder="녹취를 올리고 'AI 요약'을 누르면 주요 내용이 여기에 들어갑니다.">${esc(n.sum || "")}</textarea>
+        <div class="row"><button class="b pri" type="button" data-ai="${m.id}">AI 요약</button><span class="st" data-ast="${m.id}"></span></div>
         <h4>녹취 (자동 받아쓰기 · 다른 녹음 앱 결과를 붙여넣어도 됩니다)</h4>
         <textarea class="tr" id="tr-${m.id}" data-tr="${m.id}" rows="5" placeholder="받아쓰기를 시작하면 여기에 [분:초]와 함께 적힙니다.">${esc(n.tr)}</textarea>
         <div class="st" id="int-${m.id}"></div>
-        <div class="row"><button class="b pri" type="button" data-ai="${m.id}">AI로 노트 정리</button><span class="st" data-ast="${m.id}"></span></div>
         <h4>메모</h4>
         <textarea class="note" id="note-${m.id}" data-note="${m.id}" rows="6" placeholder="질문, 회사 답변, 투자자 반응, 후속 확인할 것">${esc(n.note)}</textarea>
       </div>
@@ -237,6 +239,7 @@ function wire(s) {
     open ? ui.open.add(id) : ui.open.delete(id);
   });
   tl.querySelectorAll("[data-tr]").forEach(t => t.oninput = () => { const n = note(s.id, t.dataset.tr); n.tr = t.value; n.at = Date.now(); saveSoon(); syncBadges(); });
+  tl.querySelectorAll("[data-sum]").forEach(t => t.oninput = () => { const n = note(s.id, t.dataset.sum); n.sum = t.value; n.at = Date.now(); saveSoon(); syncBadges(); });
   tl.querySelectorAll("[data-note]").forEach(t => t.oninput = () => { const n = note(s.id, t.dataset.note); n.note = t.value; n.at = Date.now(); saveSoon(); syncBadges(); });
   tl.querySelectorAll("[data-rec]").forEach(b => b.onclick = () => (R.on && R.mid === b.dataset.rec) ? stopRec() : (recApp() === "browser" ? startRec(s.id, b.dataset.rec) : startExternal(s.id, b.dataset.rec, recApp())));
   tl.querySelectorAll("[data-alt]").forEach(b => b.onclick = () => recApp() === "browser" ? startExternal(s.id, b.dataset.alt, "clova") : ((R.on && R.mid === b.dataset.alt) ? stopRec() : startRec(s.id, b.dataset.alt)));
@@ -256,7 +259,7 @@ function syncBadges() {
   const s = cur(); if (!s) return;
   document.querySelectorAll("[data-badge]").forEach(b => {
     const n = note(s.id, b.dataset.badge), p = [];
-    if (n.tr.trim()) p.push("녹취 있음"); if (n.note.trim()) p.push("메모 있음");
+    if ((n.sum || "").trim()) p.push("요약 있음"); if (n.tr.trim()) p.push("녹취 있음"); if (n.note.trim()) p.push("메모 있음");
     b.textContent = p.join(" · ");
   });
 }
@@ -409,7 +412,7 @@ function stopRec() {
   n.at = Date.now(); saveNow();
   const ta = $("tr-" + R.mid); if (ta) ta.value = n.tr;
   const ie = $("int-" + R.mid); if (ie) ie.textContent = "";
-  rstatus("저장했습니다. 'AI로 노트 정리'로 주요 내용을 뽑을 수 있습니다.");
+  rstatus("저장했습니다. 'AI 요약'으로 주요 내용을 뽑을 수 있습니다.");
   $("recBar").hidden = true; paintRecButtons(); syncBadges();
 }
 $("recStop").onclick = stopRec;
@@ -449,78 +452,114 @@ ${(n.tr || "").slice(0, 60000) || "(없음)"}
 [애널리스트 메모]
 ${n.note || "(없음)"}`;
 }
-async function noteAI(sid, mid, btn) {
-  const s = S.schedules.find(x => x.id === sid), m = s.meetings.find(x => x.id === mid), n = note(sid, mid);
-  const st = document.querySelector(`[data-ast="${mid}"]`) || {};
-  if (!n.tr.trim() && !n.note.trim()) { st.textContent = "정리할 녹취나 메모가 없습니다."; return false; }
-  const prompt = meetingPrompt(s, m, n);
-  btn.disabled = true; st.textContent = "정리하는 중…";
-  try {
-    const text = await askAI(prompt);
-    n.note = (n.note.trim() ? n.note.trim() + "\n\n" : "") + `── AI 정리 (${hhmm()}) ──\n` + text;
-    n.at = Date.now(); saveNow();
-    const ta = $("note-" + mid); if (ta) ta.value = n.note;
-    st.textContent = "메모에 추가했습니다."; syncBadges(); return true;
-  } catch (e) {
-    if (e.code === "nokey") { const how = await sendToClaude(prompt, `${m.org} 미팅 노트 정리`, btn); st.textContent = how === "share" ? "공유창에서 Claude 앱을 고르세요. 결과는 메모 칸에 붙여넣으면 됩니다." : how === "copy" ? "정리 요청문을 복사했습니다. Claude 앱에 붙여넣고 결과를 메모에 붙여넣으세요." : "보내기를 취소했습니다."; }
-    else st.textContent = "정리하지 못했습니다: " + e.message;
-    return false;
-  } finally { btn.disabled = false; }
+// 미팅 하나 요약 → 요약 칸(n.sum)에 넣음. API 키가 없으면 정리 페이지(각자 Claude 계정)로 보냄
+function paintSumBox(mid) { const s = cur(); if (!s) return; const ta = $("sum-" + mid); if (ta) ta.value = note(s.id, mid).sum || ""; syncBadges(); }
+async function noteAI(sid, mid, btn) { return summarizeMeetings(S.schedules.find(x => x.id === sid), [mid], btn); }
+function summarizeMeetings(s, mids, btn) {
+  const ms = mids.map(id => s.meetings.find(m => m.id === id)).filter(m => { const n = note(s.id, m.id); return n.tr.trim() || n.note.trim(); });
+  if (!ms.length) { msg("요약할 녹취나 메모가 없습니다."); return; }
+  if (!settings().key) { sendPack(ms.map(m => ({ s, m })), { scope: "meet" }, btn); return; }
+  return (async () => {
+    let ok = 0;
+    for (const m of ms) {
+      const st = document.querySelector(`[data-ast="${m.id}"]`) || {}; st.textContent = "요약하는 중…";
+      try {
+        const n = note(s.id, m.id);
+        n.sum = await askAI(meetingPrompt(s, m, n)); n.sumAt = Date.now(); n.at = Date.now(); saveNow(); ok++;
+        st.textContent = "요약을 넣었습니다."; paintSumBox(m.id);
+      } catch (e) { st.textContent = "요약하지 못했습니다: " + e.message; }
+    }
+    if (ok) msg(`미팅 ${ok}건 요약을 넣었습니다.`, true);
+    paintSum();
+  })();
 }
 
-/* ---------- 하루 요약 ---------- */
+/* ---------- 랩업 (하루 · 일정 전체 · 모든 일정) ---------- */
 const sumKey = (sid, d) => sid + "|" + d;
 function dayMeetings(s, d) { return s.meetings.filter(m => m.date === d); }
-function dayHasNotes(s, d) { return dayMeetings(s, d).some(m => { const n = note(s.id, m.id); return n.note.trim() || n.tr.trim(); }); }
+const mtext = (s, m, max) => { const n = note(s.id, m.id); return (n.sum || "").trim() || n.note.trim() || n.tr.trim().slice(0, max || 8000); };
+function dayHasNotes(s, d) { return dayMeetings(s, d).some(m => mtext(s, m)); }
 function dayEnded(s, d) { const ms = dayMeetings(s, d); return new Date() >= kst(d, ms[ms.length - 1].end); }
-function lastAt(s, d) { return Math.max(0, ...dayMeetings(s, d).map(m => note(s.id, m.id).at || 0)); }
-function dayPrompt(s, d) {
-  const body = dayMeetings(s, d).map(m => { const n = note(s.id, m.id); const t = n.note.trim() || n.tr.trim().slice(0, 8000); return t ? `### ${m.start}~${m.end} ${m.org} (${m.contact})\n${t}` : ""; }).filter(Boolean).join("\n\n");
-  return `당신은 한국 셀사이드 애널리스트의 NDR 미팅 기록을 정리하는 보조입니다.
-일정: ${s.title}. 날짜: ${d}(${dow(d)}). 아래는 기관투자자 미팅별 노트입니다.
+const SC = () => $("wrapScope").value || "day";
+function scopeList(scope, s, d) {
+  s = s || cur(); d = d || ui.day;
+  if (scope === "day") return dayMeetings(s, d).map(m => ({ s, m }));
+  if (scope === "sched") return s.meetings.map(m => ({ s, m }));
+  return S.schedules.flatMap(x => x.meetings.map(m => ({ s: x, m }))).sort((a, b) => (a.m.date + a.m.start).localeCompare(b.m.date + b.m.start));
+}
+function scopeKey(scope, s, d) { s = s || cur(); return scope === "day" ? sumKey(s.id, d || ui.day) : scope === "sched" ? sumKey(s.id, "all") : "ALL|all"; }
+function scopeLabel(scope, s, d) { s = s || cur(); d = d || ui.day; return scope === "day" ? `${s.title} ${md(d)}(${dow(d)})` : scope === "sched" ? `${s.title} 전체` : `저장된 모든 일정 (${S.schedules.length}개)`; }
+const withNotes = list => list.filter(x => mtext(x.s, x.m));
+const lastAtL = list => Math.max(0, ...list.map(x => note(x.s.id, x.m.id).at || 0));
+function wrapPrompt(scope, list, label) {
+  const per = scope === "day" ? 8000 : scope === "sched" ? 4000 : 2500;
+  const body = withNotes(list).map(({ s, m }) => `### ${md(m.date)} ${m.start}~${m.end} ${m.org}${m.contact ? " (" + m.contact + ")" : ""}${scope === "all" ? " · " + s.title : ""}\n${mtext(s, m, per)}`).join("\n\n");
+  const head = `당신은 한국 셀사이드 애널리스트의 NDR(기관투자자 미팅) 기록을 정리하는 보조입니다.
+범위: ${label}. 아래는 미팅별 노트(요약이 있으면 요약, 없으면 메모·녹취)입니다.
 기록에 없는 내용은 지어내지 말고, 불분명하면 "기록상 불명확"이라고 쓰세요.
-다음 형식의 한국어 일반 텍스트로 간결하게 정리하세요(마크다운 기호 #, ** 쓰지 말 것):
-■ 오늘 한 줄 요약
+한국어 일반 텍스트, 마크다운 기호(#, **) 없이 간결하게 아래 형식으로:
+`;
+  const fmt = scope === "day"
+    ? `■ 오늘 한 줄 요약
 ■ 기관별 핵심 (기관명: 주요 질문·관심사 / 반응 톤 긍정·중립·부정)
 ■ 공통적으로 나온 질문 Top 3
 ■ 회사·애널리스트 후속 확인 사항
-■ 투자 포인트·주가 관련 시사점
-
-${body}`;
+■ 투자 포인트·주가 관련 시사점`
+    : `■ 전체 한 줄 요약
+■ 투자자들이 가장 많이 물은 질문 Top 5 (몇 곳에서 나왔는지)
+■ 투자자 톤 분포 (긍정·중립·부정, 대표 기관)
+■ 날짜별 흐름·분위기 변화
+■ 기관별 한 줄 (기관명: 핵심 관심사 / 톤)
+■ 회사·애널리스트 후속 확인 사항
+■ 투자 포인트·리스크 시사점`;
+  return head + fmt + "\n\n" + body;
 }
 function paintSum() {
-  const s = cur(); if (!s) return; const d = ui.day;
-  $("sumTitle").textContent = `${md(d)}(${dow(d)}) 요약`;
-  const sm = S.sums[sumKey(s.id, d)], tx = $("sumText"), st = $("sumState");
+  const s = cur(); if (!s) return; const scope = SC();
+  const o = $("wrapScope").options; o[0].textContent = `이 날 (${md(ui.day)})`; o[1].textContent = "이 일정 전체"; o[2].textContent = `저장된 모든 일정 (${S.schedules.length})`;
+  const list = scopeList(scope), sm = S.sums[scopeKey(scope)], tx = $("sumText"), st = $("sumState");
   if (tx.dataset.busy === "1") return;
+  const noKey = !settings().key;
+  $("sumRun").textContent = (sm && sm.text ? "랩업 다시 만들기" : "랩업 만들기") + (noKey ? " (정리 페이지)" : "");
   if (sm && sm.text) {
-    tx.hidden = false; tx.textContent = sm.text; $("sumRun").textContent = "다시 요약";
-    st.textContent = lastAt(s, d) > sm.at ? " · 요약 이후 기록이 바뀌었습니다" : ` · ${new Date(sm.at).toLocaleString("ko-KR", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" })} 작성`;
+    tx.hidden = false; tx.textContent = sm.text;
+    st.textContent = lastAtL(list) > sm.at ? " · 랩업 이후 기록이 바뀌었습니다" : ` · ${new Date(sm.at).toLocaleString("ko-KR", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" })} 작성`;
   } else {
-    tx.hidden = true; $("sumRun").textContent = "하루 요약";
-    st.textContent = !dayHasNotes(s, d) ? " · 아직 기록이 없습니다" : dayEnded(s, d) ? (settings().key ? " · 요약 대기" : " · '하루 요약'을 누르세요") : " · 마지막 미팅이 끝나면 자동으로 요약합니다";
+    tx.hidden = true;
+    const n = withNotes(list).length;
+    st.textContent = !n ? " · 아직 기록이 없습니다" : ` · 기록 있는 미팅 ${n}건` + (scope === "day" && !noKey && !dayEnded(s, ui.day) ? " · 마지막 미팅이 끝나면 자동으로 만듭니다" : "");
   }
 }
-async function daySummary(s, d, btn) {
-  if (!dayHasNotes(s, d)) { $("sumState").textContent = " · 요약할 기록이 없습니다"; return; }
-  const prompt = dayPrompt(s, d), tx = $("sumText"), isCur = () => cur() === s && ui.day === d;
-  if (isCur()) { tx.hidden = false; tx.dataset.busy = "1"; tx.textContent = "정리하는 중…"; $("sumState").textContent = " · 요약 작성 중"; }
+async function runWrap(scope, s, d, btn) {
+  const list = scopeList(scope, s, d), label = scopeLabel(scope, s, d), key = scopeKey(scope, s, d);
+  if (!withNotes(list).length && !list.some(x => note(x.s.id, x.m.id).tr.trim())) { $("sumState").textContent = " · 정리할 기록이 없습니다"; return; }
+  if (!settings().key) { if (btn) sendPack(list, { scope, key, label }, btn); return; }
+  const tx = $("sumText"), isCur = () => scopeKey(SC()) === key;
+  if (isCur()) { tx.hidden = false; tx.dataset.busy = "1"; tx.textContent = "정리하는 중…"; }
   try {
-    const text = await askAI(prompt);
-    S.sums[sumKey(s.id, d)] = { text, at: Date.now() }; saveNow();
-  } catch (e) {
-    if (e.code === "nokey" && btn) { const how = await sendToClaude(prompt, `${md(d)} 하루 요약`, btn); if (isCur()) $("sumState").textContent = how === "share" ? " · 공유창에서 Claude 앱을 고르세요" : how === "copy" ? " · 요약 요청문을 복사했습니다. Claude 앱에 붙여넣으세요." : ""; }
-    else if (isCur()) $("sumState").textContent = " · 요약하지 못했습니다: " + e.message;
-    tx.dataset.busy = ""; if (!S.sums[sumKey(s.id, d)]) tx.hidden = true; return;
-  }
-  tx.dataset.busy = ""; if (isCur()) paintSum();
+    // 요약이 없는 미팅부터 요약
+    for (const { s: x, m } of list) {
+      const n = note(x.id, m.id);
+      if (!(n.sum || "").trim() && n.tr.trim()) { if (isCur()) $("sumState").textContent = ` · ${m.org} 미팅 요약 중`; try { n.sum = await askAI(meetingPrompt(x, m, n)); n.sumAt = n.at = Date.now(); saveNow(); paintSumBox(m.id); } catch (e) { } }
+    }
+    if (isCur()) $("sumState").textContent = " · 랩업 작성 중";
+    const text = await askAI(wrapPrompt(scope, list, label));
+    S.sums[key] = { text, at: Date.now() }; saveNow();
+  } catch (e) { if (isCur()) $("sumState").textContent = " · 만들지 못했습니다: " + e.message; tx.dataset.busy = ""; if (!S.sums[key]) tx.hidden = true; return; }
+  tx.dataset.busy = ""; paintSum();
 }
-$("sumRun").onclick = e => { const s = cur(); if (s) daySummary(s, ui.day, e.currentTarget); };
+$("wrapScope").onchange = () => { try { localStorage.setItem("ndrnote-scope", SC()); } catch (e) { } paintSum(); };
+try { const v = localStorage.getItem("ndrnote-scope"); if (v) $("wrapScope").value = v; } catch (e) { }
+$("sumRun").onclick = e => { const s = cur(); if (s) runWrap(SC(), s, ui.day, e.currentTarget); };
 $("sumCopy").onclick = e => {
-  const s = cur(); if (!s) return; const d = ui.day, sm = S.sums[sumKey(s.id, d)];
-  const txt = `${s.title} ${md(d)}(${dow(d)})\n\n` + (sm ? sm.text + "\n\n" : "") + "[미팅별 기록]\n" +
-    dayMeetings(s, d).map(m => { const n = note(s.id, m.id); return `- ${m.start} ${m.org} (${m.contact})\n${n.note.trim() || n.tr.trim() || "(기록 없음)"}`; }).join("\n\n");
+  const s = cur(); if (!s) return; const scope = SC(), sm = S.sums[scopeKey(scope)], list = scopeList(scope);
+  const txt = scopeLabel(scope) + "\n\n" + (sm ? sm.text + "\n\n" : "") + "[미팅별 노트]\n" +
+    list.map(({ s: x, m }) => `- ${md(m.date)} ${m.start} ${m.org}${m.contact ? " (" + m.contact + ")" : ""}\n${mtext(x, m, 3000) || "(기록 없음)"}`).join("\n\n");
   copy(txt, e.currentTarget);
+};
+$("sumImport").onclick = async () => {
+  try { const t = await navigator.clipboard.readText(); if (/NDRSUM:/.test(t || "")) { importSums(t); return; } } catch (e) { }
+  openInbox("", ""); $("inSrc").textContent = "정리 페이지에서 '앱으로 가져갈 결과 복사'를 누른 뒤, 아래 칸에 붙여넣고 '넣기'를 누르세요."; $("inText").focus();
 };
 const autoTried = {};
 async function maybeAuto() {
@@ -529,7 +568,7 @@ async function maybeAuto() {
     const k = sumKey(s.id, d);
     if (autoTried[k] || S.sums[k] || !dayEnded(s, d) || !dayHasNotes(s, d)) continue;
     if (Date.now() - kst(d, "00:00") > 3 * 86400000) continue; // 오래된 날짜는 자동 요약하지 않음
-    autoTried[k] = true; await daySummary(s, d);
+    autoTried[k] = true; await runWrap("day", s, d);
   }
 }
 
@@ -589,25 +628,48 @@ async function sendToClaude(text, title, btn) {
   }
   await copy(text, btn); return "copy";
 }
-function exportPack(s, ms) {
-  const meetings = ms.map(m => { const n = note(s.id, m.id); return { date: m.date, start: m.start, end: m.end, org: m.org, contact: m.contact, tr: n.tr, note: n.note }; })
+// 정리 페이지로 보내는 묶음 (v2: 미팅 id 포함 → 결과를 앱에 정확히 되돌려 넣기 위해)
+function exportPack(list, wrap) {
+  const meetings = list.map(({ s, m }) => { const n = note(s.id, m.id); return { sid: s.id, mid: m.id, title: s.title, date: m.date, start: m.start, end: m.end, org: m.org, contact: m.contact, tr: n.tr, note: n.note }; })
     .filter(x => x.tr.trim() || x.note.trim());
-  return { text: "NDRNOTE:" + JSON.stringify({ app: "ndr-note", v: 1, title: s.title, meetings }), count: meetings.length };
+  const titles = [...new Set(list.map(x => x.s.title))];
+  return { text: "NDRNOTE:" + JSON.stringify({ app: "ndr-note", v: 2, title: titles.length === 1 ? titles[0] : "NDR 전체", wrap: wrap && wrap.scope !== "meet" ? wrap : null, meetings }), count: meetings.length };
 }
-function sendPack(s, ms, btn) {
-  const { text, count } = exportPack(s, ms);
+function sendPack(list, wrap, btn) {
+  const { text, count } = exportPack(list, wrap);
   const hint = $("sendHint");
   if (!count) { msg("보낼 녹취나 메모가 없습니다."); return; }
-  const url = sumUrl(), label = btn.textContent;
+  const url = sumUrl(), label = btn ? btn.textContent : "";
   // 클립보드 복사와 새 창 열기를 같은 탭 동작 안에서 처리 (브라우저 차단 방지)
   const p = navigator.clipboard ? navigator.clipboard.writeText(text) : Promise.reject();
   window.open(url, "_blank", "noopener");
-  p.then(() => { btn.textContent = `${count}건 복사됨`; msg(`미팅 ${count}건 기록을 복사했습니다. 열린 정리 페이지에 붙여넣고 '정리 시작'을 누르세요.`, true); })
+  p.then(() => { if (btn) btn.textContent = `${count}건 복사됨`; msg(`미팅 ${count}건 기록을 복사했습니다. 열린 정리 페이지에 붙여넣고 '정리 시작' → 끝나면 '앱으로 가져갈 결과 복사' → 이 앱의 '정리 결과 가져오기'.`, true); })
    .catch(() => { msg("자동 복사가 막혀 있습니다. 아래 상자의 내용을 길게 눌러 복사하세요."); hint.hidden = false; hint.textContent = text; })
-   .finally(() => setTimeout(() => btn.textContent = label, 2000));
+   .finally(() => { if (btn) setTimeout(() => btn.textContent = label, 2500); });
 }
-$("sendDay").onclick = e => { const s = cur(); if (s) sendPack(s, dayMeetings(s, ui.day), e.currentTarget); };
-$("sendAll").onclick = e => { const s = cur(); if (s) sendPack(s, s.meetings, e.currentTarget); };
+// 정리 페이지에서 돌아온 결과(NDRSUM:{...})를 각 미팅 요약 칸과 랩업에 넣기
+function parseSums(text) {
+  const out = [];
+  for (const part of String(text || "").split(/NDRSUM:/).slice(1)) { const t = part.trim(), e = t.lastIndexOf("}"); if (e < 0) continue; try { out.push(JSON.parse(t.slice(0, e + 1))); } catch (err) { } }
+  return out;
+}
+function countSums(text) { return parseSums(text).reduce((a, j) => a + (j.items || []).length + (j.days || []).length + (j.wraps || []).length, 0); }
+function importSums(text) {
+  let nm = 0, nd = 0, nw = 0, miss = 0;
+  for (const j of parseSums(text)) {
+    for (const it of j.items || []) {
+      let s = S.schedules.find(x => x.id === it.sid), m = s && s.meetings.find(x => x.id === it.mid);
+      if (!m) for (const x of S.schedules) { const y = x.meetings.find(z => z.date === it.date && z.start === it.start && (!it.org || z.org === it.org)); if (y) { s = x; m = y; break; } }
+      if (!m || !it.ai) { miss++; continue; }
+      const n = note(s.id, m.id); n.sum = it.ai; n.sumAt = it.at || Date.now(); n.at = Date.now(); nm++;
+    }
+    for (const d of j.days || []) { if (d.sid && d.date && d.text && S.schedules.some(x => x.id === d.sid)) { S.sums[sumKey(d.sid, d.date)] = { text: d.text, at: Date.now() + 1 }; nd++; } }
+    for (const w of j.wraps || []) { if (w.key && w.text) { S.sums[w.key] = { text: w.text, at: Date.now() + 1 }; nw++; } }
+  }
+  if (!nm && !nd && !nw) { msg("가져올 정리 결과를 찾지 못했습니다. 정리 페이지에서 '앱으로 가져갈 결과 복사'를 다시 눌러주세요."); return; }
+  saveNow(); renderSched();
+  msg(`가져왔습니다: 미팅 요약 ${nm}건` + (nd ? `, 하루 요약 ${nd}건` : "") + (nw ? `, 랩업 ${nw}건` : "") + (miss ? ` (맞는 미팅을 못 찾은 ${miss}건 제외)` : ""), true);
+}
 
 
 
@@ -664,75 +726,131 @@ function startExternal(sid, mid, app) {
 /* ---------- 외부 녹취 넣기 (클로바노트·녹음 앱 공유 / 붙여넣기) ---------- */
 let inboxSrc = "";
 function findStamp(text) {
-  // 녹음 시각 찾기: 2026.11.05 13:12 / 2026-11-05 오후 1:12 / 11월 5일 오후 1:12 / 11.05 13:12
+  // 녹음 시각 찾기: 2026.11.05 목 오후 1:12 / 2026-11-05 13:12 / 11월 5일 오후 1:12 / 파일명 261105_131203
   const t = String(text || "").slice(0, 600);
   const y0 = new Date().getFullYear();
-  let m = t.match(/(20\d{2})\s*[.\-\/년]\s*(\d{1,2})\s*[.\-\/월]\s*(\d{1,2})\s*일?\.?\s*(?:\([^)]*\)\s*)?(오전|오후|AM|PM)?\s*(\d{1,2})\s*[:시]\s*(\d{2})?/i)
-       || t.match(/()(\d{1,2})\s*월\s*(\d{1,2})\s*일\s*(?:\([^)]*\)\s*)?(오전|오후)?\s*(\d{1,2})\s*[:시]\s*(\d{2})?/);
-  if (!m) return null;
+  const WD = String.raw`\s*(?:\([^)]*\)|[월화수목금토일](?:요일)?(?![가-힣]))?\s*`;
+  let m = t.match(new RegExp(String.raw`(20\d{2})\s*[.\-\/년]\s*(\d{1,2})\s*[.\-\/월]\s*(\d{1,2})\s*일?\.?` + WD + String.raw`(오전|오후|AM|PM)?\s*(\d{1,2})\s*[:시]\s*(\d{2})?`, "i"))
+       || t.match(new RegExp(String.raw`()(\d{1,2})\s*월\s*(\d{1,2})\s*일` + WD + String.raw`(오전|오후)?\s*(\d{1,2})\s*[:시]\s*(\d{2})?`));
+  if (!m) {
+    const f = t.match(/(?:^|[^\d])(?:20)?(\d{2})(\d{2})(\d{2})[_\- ]?(\d{2})(\d{2})(?:\d{2})?(?!\d)/);
+    if (f && +f[2] >= 1 && +f[2] <= 12 && +f[3] >= 1 && +f[3] <= 31 && +f[4] < 24 && +f[5] < 60) return { date: `20${f[1]}-${f[2]}-${f[3]}`, time: `${f[4]}:${f[5]}` };
+    return null;
+  }
   let h = +m[5]; const mi = +(m[6] || 0); const ap = (m[4] || "").toUpperCase();
   if ((ap === "오후" || ap === "PM") && h < 12) h += 12; if ((ap === "오전" || ap === "AM") && h === 12) h = 0;
   const y = m[1] ? +m[1] : y0;
   return { date: `${y}-${pad(+m[2])}-${pad(+m[3])}`, time: `${pad(h)}:${pad(mi)}` };
 }
-function guessMeeting(s, text) {
-  const st = findStamp(text);
+// 기관 이름에서 흔한 꼬리말을 떼어 핵심 이름만 (예: 베어링자산운용 → 베어링)
+const orgCore = o => String(o || "").replace(/\(.*?\)/g, "").replace(/(자산운용|자산|운용|투자자문|투신|인베스트먼트|파트너스|캐피탈|증권|생명|화재|보험|에셋|매니지먼트|AM|AMC)$/i, "").replace(/\s+/g, "").trim();
+function guessMeeting(s, text, name) {
+  const all = [];
+  const head = String(name || "") + "\n" + String(text || "").slice(0, 400);
+  const st = findStamp(String(name || "") + "\n" + String(text || "")) || findStamp(text);
   if (st) {
     const t = kst(st.date, st.time);
     const hit = s.meetings.find(m => m.date === st.date && t >= new Date(kst(m.date, m.start) - 20 * 60000) && t <= new Date(+kst(m.date, m.end) + 10 * 60000));
-    if (hit) return { m: hit, why: `녹음 시각 ${md(st.date)} ${st.time} 기준으로 골랐습니다.` };
+    if (hit) return { m: hit, sure: true, why: `녹음 시각 ${md(st.date)} ${st.time}` };
+    const near = s.meetings.filter(m => m.date === st.date).map(m => ({ m, d: Math.abs(kst(m.date, m.start) - t) })).sort((a, b) => a.d - b.d)[0];
+    if (near && near.d <= 60 * 60000) return { m: near.m, sure: false, why: `녹음 시각 ${md(st.date)} ${st.time}에 가장 가까운 미팅` };
   }
-  const head = String(text || "").slice(0, 400);
   const byName = s.meetings.find(m => head.includes(recName(m))) || s.meetings.find(m => head.includes(m.date.slice(5).replace("-", "") + " " + m.start.replace(":", "")));
-  if (byName) return { m: byName, why: "녹음 제목으로 골랐습니다." };
+  if (byName) return { m: byName, sure: true, why: "녹음 제목" };
+  const flat = head.replace(/\s+/g, "");
+  const orgHits = s.meetings.filter(m => { const c = orgCore(m.org); return c.length >= 2 && flat.includes(c); });
+  const who = s.meetings.filter(m => { const c = String(m.contact || "").split(/\s/)[0]; return c.length >= 2 && flat.includes(c); });
+  const pick = list => (st && list.find(m => m.date === st.date)) || (list.length === 1 ? list[0] : null);
+  const ob = pick(orgHits) || pick(who);
+  if (ob) return { m: ob, sure: true, why: orgHits.includes(ob) ? `기관 이름(${orgCore(ob.org)})` : `담당자 이름(${String(ob.contact).split(/\s/)[0]})` };
   const ext = s.meetings.map(m => ({ m, n: note(s.id, m.id) })).filter(x => x.n.ext && !x.n.ext.done && Date.now() - x.n.ext.at < 8 * 3600000).sort((a, b) => b.n.ext.at - a.n.ext.at)[0];
-  if (ext) return { m: ext.m, why: `${REC_APPS[ext.n.ext.app]?.name || "녹음 앱"} 녹음을 시작한 미팅으로 골랐습니다.` };
+  if (ext) return { m: ext.m, sure: false, why: `${REC_APPS[ext.n.ext.app]?.name || "녹음 앱"} 녹음을 시작한 미팅` };
   const now = new Date(), today = todayStr();
   const todays = s.meetings.filter(m => m.date === today);
   const live = todays.find(m => now >= kst(m.date, m.start) && now < kst(m.date, m.end));
-  if (live) return { m: live, why: "지금 진행 중인 미팅으로 골랐습니다." };
+  if (live) return { m: live, sure: false, why: "지금 진행 중인 미팅" };
   const past = todays.filter(m => kst(m.date, m.end) <= now).pop();
-  if (past) return { m: past, why: "가장 최근에 끝난 미팅으로 골랐습니다. 다르면 바꿔주세요." };
-  return { m: s.meetings.find(m => m.date === ui.day) || s.meetings[0], why: "녹음 시각을 찾지 못했습니다. 넣을 미팅을 골라주세요." };
+  if (past) return { m: past, sure: false, why: "가장 최근에 끝난 미팅 (확인 필요)" };
+  return { m: s.meetings.find(m => m.date === ui.day) || s.meetings[0], sure: false, why: "녹음 시각을 찾지 못함 (골라주세요)" };
 }
-function openInbox(text, src) {
+const IN = { items: [] };   // 여러 파일을 한꺼번에 올릴 때 [{name, text, mid, why}]
+const meetingOpts = s => s.meetings.map(m => `<option value="${m.id}">${md(m.date)}(${dow(m.date)}) ${m.start} ${esc(m.org)}</option>`).join("");
+function openInbox(text, src, items) {
   const s = cur(); if (!s) { msg("먼저 일정을 만들어 주세요."); return; }
   inboxSrc = src || "";
   $("inbox").hidden = false; $("inText").value = text || "";
-  $("inSrc").textContent = src ? `"${src}"에서 받은 녹취입니다.` : "클로바노트·갤럭시 녹음 앱 등에서 녹취 텍스트를 복사해 오세요.";
-  $("inMeeting").innerHTML = s.meetings.map(m => `<option value="${m.id}">${md(m.date)}(${dow(m.date)}) ${m.start} ${esc(m.org)}</option>`).join("");
+  $("inSrc").textContent = src ? `"${src}"에서 받은 녹취입니다.` : "클로바노트에서 녹음한 뒤 텍스트 파일(여러 개 가능)을 올리거나, 녹취 텍스트를 붙여넣으세요. 녹음 시각·제목·기관 이름으로 미팅을 알아서 찾습니다.";
+  $("inMeeting").innerHTML = meetingOpts(s);
+  setItems(items || []);
   refreshGuess();
   $("inbox").scrollIntoView({ behavior: "smooth", block: "start" });
 }
+function setItems(items) {
+  const s = cur();
+  IN.items = items.filter(x => x.text && x.text.trim()).map(x => { const g = guessMeeting(s, x.text, x.name); return { ...x, mid: g.m.id, why: g.why, sure: g.sure }; });
+  const many = IN.items.length > 0;
+  $("inText").hidden = many; $("inMeetingBox").hidden = many; $("inGuess").hidden = many;
+  $("inList").hidden = !many;
+  $("inList").innerHTML = IN.items.map((x, i) => `<div class="initem"><div class="inname"><b>${esc(x.name || "녹취 " + (i + 1))}</b> <span class="st">${x.text.length.toLocaleString()}자 · ${esc(x.why)}${x.sure ? "" : " ⚠"}</span></div>
+    <select data-item="${i}" aria-label="넣을 미팅">${meetingOpts(s)}</select></div>`).join("");
+  $("inList").querySelectorAll("[data-item]").forEach(sel => { sel.value = IN.items[+sel.dataset.item].mid; sel.onchange = () => IN.items[+sel.dataset.item].mid = sel.value; });
+  $("inAddAI").textContent = many ? `${IN.items.length}건 넣고 요약` : "넣고 요약";
+  $("inAdd").textContent = many ? `${IN.items.length}건 넣기` : "넣기";
+}
 function refreshGuess() {
-  const s = cur(); if (!s) return;
-  const g = guessMeeting(s, inboxSrc + "\n" + $("inText").value);
+  const s = cur(); if (!s || IN.items.length) return;
+  const v = $("inText").value;
+  if (/^\s*NDRSUM:/.test(v)) { const n = countSums(v); $("inGuess").textContent = n ? `정리 페이지의 결과입니다. '넣기'를 누르면 요약 ${n}건을 각 미팅에 넣습니다.` : "정리 결과를 읽지 못했습니다. 정리 페이지에서 다시 복사해 주세요."; $("inMeetingBox").hidden = true; return; }
+  $("inMeetingBox").hidden = false;
+  const g = guessMeeting(s, v, inboxSrc);
   if (g.m) $("inMeeting").value = g.m.id;
-  $("inGuess").textContent = $("inText").value.trim() ? g.why : "";
+  $("inGuess").textContent = v.trim() ? "자동 선택: " + g.why : "";
 }
 $("openInbox").onclick = () => openInbox("", "");
 $("inText").addEventListener("input", () => { clearTimeout(refreshGuess.t); refreshGuess.t = setTimeout(refreshGuess, 400); });
 $("inPaste").onclick = async () => {
-  try { const t = await navigator.clipboard.readText(); if (t) { $("inText").value = t; refreshGuess(); } else msg("클립보드가 비어 있습니다."); }
+  try { const t = await navigator.clipboard.readText(); if (t) { setItems([]); $("inText").value = t; refreshGuess(); } else msg("클립보드가 비어 있습니다."); }
   catch (e) { msg("클립보드를 읽을 수 없습니다. 칸을 길게 눌러 '붙여넣기' 하세요."); $("inText").focus(); }
 };
-$("inFile").onchange = async e => { const f = e.target.files[0]; e.target.value = ""; if (!f) return; inboxSrc = f.name; $("inText").value = await f.text(); refreshGuess(); };
-$("inCancel").onclick = () => { $("inbox").hidden = true; };
-$("inPaste").classList.add("pri");
-async function inboxAdd(withAI) {
-  const s = cur(), text = $("inText").value.trim(), mid = $("inMeeting").value;
-  if (!text) { msg("넣을 녹취가 없습니다."); return; }
-  const m = s.meetings.find(x => x.id === mid), n = note(s.id, mid);
-  n.tr = (n.tr.trim() ? n.tr.replace(/\s+$/, "") + "\n\n" : "") + `── 외부 녹취${inboxSrc ? " · " + inboxSrc : ""} (${hhmm()} 추가) ──\n` + text + "\n";
-  if (n.ext) n.ext.done = true;
-  n.at = Date.now(); saveNow();
-  $("inbox").hidden = true; ui.day = m.date; ui.broker = "전체"; ui.open.add(mid); renderSched();
-  const el = document.querySelector(`.mtg[data-id="${mid}"]`); if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
-  msg(`${m.org} 미팅 녹취에 넣었습니다.`, true);
-  if (withAI) { const b = document.querySelector(`[data-ai="${mid}"]`); if (b) noteAI(s.id, mid, b); }
+async function readTextFile(f) {
+  if (/\.(m4a|mp3|wav|aac|amr|ogg|3gp|mp4|webm)$/i.test(f.name) || /^audio|^video/.test(f.type)) return { name: f.name, text: "", bad: "음성 파일" };
+  if (/\.docx$/i.test(f.name)) return { name: f.name, text: "", bad: "워드 파일" };
+  return { name: f.name.replace(/\.(txt|text)$/i, ""), text: (await f.text()).trim() };
 }
-$("inAdd").onclick = () => inboxAdd(false);
-$("inAddAI").onclick = () => inboxAdd(true);
+$("inFile").onchange = async e => {
+  const fs = [...e.target.files]; e.target.value = ""; if (!fs.length) return;
+  const got = await Promise.all(fs.map(readTextFile));
+  const bad = got.filter(x => x.bad), ok = got.filter(x => !x.bad && x.text);
+  if (bad.length) msg(`${bad.map(x => x.name).join(", ")}: ${bad[0].bad}은 읽을 수 없습니다. 클로바노트에서 '음성 기록 다운로드 → 텍스트(.txt)'로 받아 올려주세요.`);
+  if (!ok.length) return;
+  if (ok.length === 1 && !IN.items.length) { inboxSrc = ok[0].name; $("inText").value = ok[0].text; refreshGuess(); }
+  else setItems([...IN.items, ...ok]);
+};
+$("inCancel").onclick = () => { $("inbox").hidden = true; setItems([]); };
+$("inPaste").classList.add("pri");
+function putTranscript(s, mid, text, src) {
+  const n = note(s.id, mid);
+  n.tr = (n.tr.trim() ? n.tr.replace(/\s+$/, "") + "\n\n" : "") + `── 외부 녹취${src ? " · " + src : ""} (${hhmm()} 추가) ──\n` + text.trim() + "\n";
+  if (n.ext) n.ext.done = true;
+  n.at = Date.now();
+}
+function inboxAdd(withAI, btn) {
+  const s = cur();
+  if (!IN.items.length && /^\s*NDRSUM:/.test($("inText").value)) { importSums($("inText").value); $("inbox").hidden = true; return; }
+  let jobs;
+  if (IN.items.length) jobs = IN.items.map(x => ({ mid: x.mid, text: x.text, src: x.name }));
+  else { const text = $("inText").value.trim(); if (!text) { msg("넣을 녹취가 없습니다."); return; } jobs = [{ mid: $("inMeeting").value, text, src: inboxSrc }]; }
+  jobs.forEach(j => putTranscript(s, j.mid, j.text, j.src));
+  saveNow();
+  const mids = [...new Set(jobs.map(j => j.mid))], first = s.meetings.find(m => m.id === mids[0]);
+  $("inbox").hidden = true; setItems([]); ui.day = first.date; ui.broker = "전체"; mids.forEach(id => ui.open.add(id)); renderSched();
+  const el = document.querySelector(`.mtg[data-id="${mids[0]}"]`); if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
+  const names = mids.map(id => s.meetings.find(m => m.id === id).org).join(", ");
+  msg(`녹취를 넣었습니다: ${names}`, true);
+  if (withAI) summarizeMeetings(s, mids, btn);
+}
+$("inAdd").onclick = e => inboxAdd(false, e.currentTarget);
+$("inAddAI").onclick = e => inboxAdd(true, e.currentTarget);
 // 클로바노트·녹음 앱에서 녹음을 시작한 뒤(10분 이상 지나) 앱으로 돌아오면 녹취 넣기 창을 띄움
 function pendingExt() {
   const s = cur(); if (!s) return null;
@@ -755,7 +873,10 @@ async function checkShared() {
   try {
     const c = await caches.open("ndr-share"); const r = await c.match("shared"); if (!r) return;
     const d = await r.json(); await c.delete("shared");
-    if (d.text) openInbox(d.text, d.title || "공유");
+    const items = (d.items || []).filter(x => x.text && x.text.trim());
+    if (/^\s*NDRSUM:/.test(d.text || "")) { importSums(d.text); return; }
+    if (items.length > 1) openInbox("", d.title || "공유", items);
+    else if (d.text || items.length) openInbox(d.text || items[0].text, d.title || items[0]?.name || "공유");
   } catch (e) { msg("공유받은 내용을 읽지 못했습니다. 복사해서 '녹취 넣기'로 붙여넣어 주세요."); }
 }
 
@@ -819,7 +940,7 @@ const Sync = (() => {
     Object.entries(remote.notes || {}).forEach(([k, v]) => { const o = out.notes[k]; if (!o || (v.at || 0) > (o.at || 0)) out.notes[k] = v; });
     Object.entries(remote.sums || {}).forEach(([k, v]) => { const o = out.sums[k]; if (!o || (v.at || 0) > (o.at || 0)) out.sums[k] = v; });
     const alive = new Set(out.schedules.map(s => s.id));
-    [out.notes, out.sums].forEach(o => Object.keys(o).forEach(k => { if (!alive.has(k.split("|")[0])) delete o[k]; }));
+    [out.notes, out.sums].forEach(o => Object.keys(o).forEach(k => { if (!k.startsWith("ALL|") && !alive.has(k.split("|")[0])) delete o[k]; }));
     if (!alive.has(out.cur)) out.cur = out.schedules[0]?.id || null;
     return out;
   }

@@ -113,3 +113,10 @@ textarea{font:inherit;font-size:15px;line-height:1.6;color:var(--ink);background
 
 .chip2{font-size:12px;padding:5px 10px;color:var(--ok);border-color:var(--ok)}
 .chip2[data-err="1"]{color:var(--rec);border-color:var(--rec)}
+
+.inlist{display:flex;flex-direction:column;gap:8px;max-height:50vh;overflow:auto}
+.initem{display:flex;flex-direction:column;gap:4px;border:1px solid var(--line);border-radius:9px;padding:8px 10px}
+.initem select{max-width:100%}
+.inname{overflow-wrap:anywhere;font-size:13.5px}
+.sumbox{min-height:110px;background:var(--soft)}
+#wrapScope{max-width:60vw}
