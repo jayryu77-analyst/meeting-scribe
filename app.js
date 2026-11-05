@@ -880,6 +880,7 @@ $("syncNow").onclick = () => {
 $("syncChip").onclick = () => Sync.now();
 
 /* ---------- 시작 ---------- */
+$("verLabel").textContent = "버전 " + (window.APP_VERSION || "?") + " ·";
 if (S.schedules.length) { if (!cur()) S.cur = S.schedules[0].id; renderSched(); } else show("import");
 checkShared();
 Sync.start();

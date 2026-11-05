@@ -9,7 +9,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="미팅노트">
 <link rel="apple-touch-icon" href="icon-192.png">
-<link rel="stylesheet" href="style.css">
+<link rel="stylesheet" href="style.css?v=18">
 </head>
 <body>
 <div class="wrap">
@@ -127,7 +127,7 @@
     <div class="row"><button class="b pri" id="saveSet" type="button">저장</button><button class="b" id="closeSet" type="button">닫기</button></div>
   </section>
 
-  <footer class="foot">모든 일정·메모·녹취는 이 기기 브라우저에만 저장됩니다. 음성 파일은 저장하지 않습니다. 기기를 바꾸거나 브라우저 데이터를 지우기 전에 백업 파일을 저장하세요.</footer>
+  <footer class="foot"><b id="verLabel"></b> 모든 일정·메모·녹취는 이 기기 브라우저에만 저장됩니다. 음성 파일은 저장하지 않습니다. 기기를 바꾸거나 브라우저 데이터를 지우기 전에 백업 파일을 저장하세요.</footer>
 </div>
 
 <div class="recbar" id="recBar" hidden>
@@ -135,8 +135,9 @@
   <button class="b" id="recStop" type="button">정지</button>
 </div>
 
-<script src="parser.js"></script>
-<script src="app.js"></script>
-<script>if("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(()=>{});</script>
+<script src="parser.js?v=18"></script>
+<script>window.APP_VERSION="18";</script>
+<script src="app.js?v=18"></script>
+<script>if("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js",{updateViaCache:"none"}).catch(()=>{});</script>
 </body>
 </html>
