@@ -620,6 +620,7 @@ $("inPaste").onclick = async () => {
 };
 $("inFile").onchange = async e => { const f = e.target.files[0]; e.target.value = ""; if (!f) return; inboxSrc = f.name; $("inText").value = await f.text(); refreshGuess(); };
 $("inCancel").onclick = () => { $("inbox").hidden = true; };
+$("inPaste").classList.add("pri");
 async function inboxAdd(withAI) {
   const s = cur(), text = $("inText").value.trim(), mid = $("inMeeting").value;
   if (!text) { msg("넣을 녹취가 없습니다."); return; }
@@ -634,6 +635,22 @@ async function inboxAdd(withAI) {
 }
 $("inAdd").onclick = () => inboxAdd(false);
 $("inAddAI").onclick = () => inboxAdd(true);
+// 클로바노트·녹음 앱에서 녹음을 시작한 뒤(10분 이상 지나) 앱으로 돌아오면 녹취 넣기 창을 띄움
+function pendingExt() {
+  const s = cur(); if (!s) return null;
+  return s.meetings.map(m => ({ m, n: note(s.id, m.id) }))
+    .filter(x => x.n.ext && !x.n.ext.done && !x.n.ext.asked && Date.now() - x.n.ext.at > 10 * 60000 && Date.now() - x.n.ext.at < 8 * 3600000)
+    .sort((a, b) => b.n.ext.at - a.n.ext.at)[0] || null;
+}
+function offerPending() {
+  if ($("schedView").hidden || !$("inbox").hidden || R.on) return;
+  const p = pendingExt(); if (!p) return;
+  p.n.ext.asked = true; saveNow();
+  openInbox("", "");
+  $("inSrc").textContent = `${p.m.org} 미팅 녹음이 끝났나요? ${REC_APPS[p.n.ext.app]?.name || "녹음 앱"}에서 '전체 음성 기록 텍스트 복사'를 한 뒤 아래 '클립보드에서 붙여넣기'를 누르세요.`;
+  $("inMeeting").value = p.m.id;
+}
+document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") setTimeout(offerPending, 400); });
 async function checkShared() {
   if (!/[?&]shared=1/.test(location.search)) return;
   history.replaceState(null, "", location.pathname);
