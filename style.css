@@ -99,3 +99,7 @@ textarea{font:inherit;font-size:15px;line-height:1.6;color:var(--ink);background
 .photo img{width:100%;border-radius:6px;max-height:160px;object-fit:cover;object-position:top}
 .photoside{display:flex;flex-direction:column;gap:8px;min-width:0}
 @media (max-width:420px){.photo{grid-template-columns:84px 1fr}}
+
+.inbox{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent)}
+.inboxbtn{justify-content:center;border-style:dashed;color:var(--accent)}
+#inMeeting{max-width:100%;font-size:15px;padding:8px}

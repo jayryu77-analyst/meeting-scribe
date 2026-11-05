@@ -53,11 +53,23 @@
   </section>
 
   <!-- 일정 화면 -->
+  <!-- 받은 녹취 넣기 -->
+  <section class="card inbox" id="inbox" hidden>
+    <h2>녹취 넣기</h2>
+    <p class="hint" id="inSrc"></p>
+    <textarea id="inText" rows="5" placeholder="클로바노트·녹음 앱에서 복사한 녹취를 붙여넣으세요"></textarea>
+    <div class="row"><button class="b" id="inPaste" type="button">클립보드에서 붙여넣기</button><label class="b file">텍스트 파일<input type="file" id="inFile" accept=".txt,text/plain"></label></div>
+    <label class="f">넣을 미팅<select id="inMeeting"></select></label>
+    <p class="hint" id="inGuess"></p>
+    <div class="row"><button class="b pri" id="inAddAI" type="button">넣고 AI 정리</button><button class="b" id="inAdd" type="button">넣기</button><button class="b" id="inCancel" type="button">취소</button></div>
+  </section>
+
   <section id="schedView" hidden>
     <div class="shead">
       <div><div class="eyebrow" id="sRange"></div><h2 id="sTitle"></h2></div>
     </div>
     <div class="stats" id="stats"></div>
+    <button class="b inboxbtn" id="openInbox" type="button">녹취 넣기 (클로바노트·녹음 앱)</button>
     <nav class="tabs" id="tabs" role="tablist"></nav>
     <div class="filters" id="filters"></div>
     <section class="sum" id="sumPanel">

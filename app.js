@@ -30,6 +30,7 @@ function msg(t, ok) { const b = $("msg"); b.hidden = !t; b.textContent = t || ""
 
 /* ---------- 화면 전환 ---------- */
 function show(v) {
+  if (v !== "sched") $("inbox").hidden = true;
   $("importView").hidden = v !== "import"; $("schedView").hidden = v !== "sched"; $("setView").hidden = v !== "set";
   $("cancelImport").hidden = !S.schedules.length;
   fillSel();
@@ -523,7 +524,84 @@ function sendPack(s, ms, btn) {
 $("sendDay").onclick = e => { const s = cur(); if (s) sendPack(s, dayMeetings(s, ui.day), e.currentTarget); };
 $("sendAll").onclick = e => { const s = cur(); if (s) sendPack(s, s.meetings, e.currentTarget); };
 
+
+/* ---------- 외부 녹취 넣기 (클로바노트·녹음 앱 공유 / 붙여넣기) ---------- */
+let inboxSrc = "";
+function findStamp(text) {
+  // 녹음 시각 찾기: 2026.11.05 13:12 / 2026-11-05 오후 1:12 / 11월 5일 오후 1:12 / 11.05 13:12
+  const t = String(text || "").slice(0, 600);
+  const y0 = new Date().getFullYear();
+  let m = t.match(/(20\d{2})\s*[.\-\/년]\s*(\d{1,2})\s*[.\-\/월]\s*(\d{1,2})\s*일?\.?\s*(?:\([^)]*\)\s*)?(오전|오후|AM|PM)?\s*(\d{1,2})\s*[:시]\s*(\d{2})?/i)
+       || t.match(/()(\d{1,2})\s*월\s*(\d{1,2})\s*일\s*(?:\([^)]*\)\s*)?(오전|오후)?\s*(\d{1,2})\s*[:시]\s*(\d{2})?/);
+  if (!m) return null;
+  let h = +m[5]; const mi = +(m[6] || 0); const ap = (m[4] || "").toUpperCase();
+  if ((ap === "오후" || ap === "PM") && h < 12) h += 12; if ((ap === "오전" || ap === "AM") && h === 12) h = 0;
+  const y = m[1] ? +m[1] : y0;
+  return { date: `${y}-${pad(+m[2])}-${pad(+m[3])}`, time: `${pad(h)}:${pad(mi)}` };
+}
+function guessMeeting(s, text) {
+  const st = findStamp(text);
+  if (st) {
+    const t = kst(st.date, st.time);
+    const hit = s.meetings.find(m => m.date === st.date && t >= new Date(kst(m.date, m.start) - 20 * 60000) && t <= new Date(+kst(m.date, m.end) + 10 * 60000));
+    if (hit) return { m: hit, why: `녹음 시각 ${md(st.date)} ${st.time} 기준으로 골랐습니다.` };
+  }
+  const now = new Date(), today = todayStr();
+  const todays = s.meetings.filter(m => m.date === today);
+  const live = todays.find(m => now >= kst(m.date, m.start) && now < kst(m.date, m.end));
+  if (live) return { m: live, why: "지금 진행 중인 미팅으로 골랐습니다." };
+  const past = todays.filter(m => kst(m.date, m.end) <= now).pop();
+  if (past) return { m: past, why: "가장 최근에 끝난 미팅으로 골랐습니다. 다르면 바꿔주세요." };
+  return { m: s.meetings.find(m => m.date === ui.day) || s.meetings[0], why: "녹음 시각을 찾지 못했습니다. 넣을 미팅을 골라주세요." };
+}
+function openInbox(text, src) {
+  const s = cur(); if (!s) { msg("먼저 일정을 만들어 주세요."); return; }
+  inboxSrc = src || "";
+  $("inbox").hidden = false; $("inText").value = text || "";
+  $("inSrc").textContent = src ? `"${src}"에서 받은 녹취입니다.` : "클로바노트·갤럭시 녹음 앱 등에서 녹취 텍스트를 복사해 오세요.";
+  $("inMeeting").innerHTML = s.meetings.map(m => `<option value="${m.id}">${md(m.date)}(${dow(m.date)}) ${m.start} ${esc(m.org)}</option>`).join("");
+  refreshGuess();
+  $("inbox").scrollIntoView({ behavior: "smooth", block: "start" });
+}
+function refreshGuess() {
+  const s = cur(); if (!s) return;
+  const g = guessMeeting(s, inboxSrc + "\n" + $("inText").value);
+  if (g.m) $("inMeeting").value = g.m.id;
+  $("inGuess").textContent = $("inText").value.trim() ? g.why : "";
+}
+$("openInbox").onclick = () => openInbox("", "");
+$("inText").addEventListener("input", () => { clearTimeout(refreshGuess.t); refreshGuess.t = setTimeout(refreshGuess, 400); });
+$("inPaste").onclick = async () => {
+  try { const t = await navigator.clipboard.readText(); if (t) { $("inText").value = t; refreshGuess(); } else msg("클립보드가 비어 있습니다."); }
+  catch (e) { msg("클립보드를 읽을 수 없습니다. 칸을 길게 눌러 '붙여넣기' 하세요."); $("inText").focus(); }
+};
+$("inFile").onchange = async e => { const f = e.target.files[0]; e.target.value = ""; if (!f) return; inboxSrc = f.name; $("inText").value = await f.text(); refreshGuess(); };
+$("inCancel").onclick = () => { $("inbox").hidden = true; };
+async function inboxAdd(withAI) {
+  const s = cur(), text = $("inText").value.trim(), mid = $("inMeeting").value;
+  if (!text) { msg("넣을 녹취가 없습니다."); return; }
+  const m = s.meetings.find(x => x.id === mid), n = note(s.id, mid);
+  n.tr = (n.tr.trim() ? n.tr.replace(/\s+$/, "") + "\n\n" : "") + `── 외부 녹취${inboxSrc ? " · " + inboxSrc : ""} (${hhmm()} 추가) ──\n` + text + "\n";
+  n.at = Date.now(); saveNow();
+  $("inbox").hidden = true; ui.day = m.date; ui.broker = "전체"; ui.open.add(mid); renderSched();
+  const el = document.querySelector(`.mtg[data-id="${mid}"]`); if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
+  msg(`${m.org} 미팅 녹취에 넣었습니다.`, true);
+  if (withAI) { const b = document.querySelector(`[data-ai="${mid}"]`); if (b) noteAI(s.id, mid, b); }
+}
+$("inAdd").onclick = () => inboxAdd(false);
+$("inAddAI").onclick = () => inboxAdd(true);
+async function checkShared() {
+  if (!/[?&]shared=1/.test(location.search)) return;
+  history.replaceState(null, "", location.pathname);
+  try {
+    const c = await caches.open("ndr-share"); const r = await c.match("shared"); if (!r) return;
+    const d = await r.json(); await c.delete("shared");
+    if (d.text) openInbox(d.text, d.title || "공유");
+  } catch (e) { msg("공유받은 내용을 읽지 못했습니다. 복사해서 '녹취 넣기'로 붙여넣어 주세요."); }
+}
+
 /* ---------- 시작 ---------- */
 if (S.schedules.length) { if (!cur()) S.cur = S.schedules[0].id; renderSched(); } else show("import");
+checkShared();
 setInterval(() => { if (!$("schedView").hidden) { refreshState(); if ($("sumText").dataset.busy !== "1") paintSum(); } maybeAuto(); }, 60000);
 setTimeout(maybeAuto, 1500);
