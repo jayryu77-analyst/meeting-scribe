@@ -51,16 +51,38 @@ h2{font-size:16px;margin:4px 0 0}
 button:focus-visible,input:focus-visible,textarea:focus-visible,summary:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 details summary{cursor:pointer;color:var(--accent);font-size:13px}
 .empty{color:var(--muted);font-size:14px;text-align:center;padding:16px}
+.sched{display:flex;flex-direction:column;gap:10px}
+.shead{display:flex;justify-content:space-between;align-items:baseline;gap:8px;flex-wrap:wrap}
+.shead b{font-size:15px}
+.days{display:flex;gap:6px;flex-wrap:wrap}
+.day{appearance:none;font:inherit;font-size:13px;border:1px solid var(--line);background:var(--surface);color:var(--ink);border-radius:999px;padding:4px 12px;cursor:pointer}
+.day[aria-pressed="true"]{background:var(--accent);border-color:var(--accent);color:#fff}
+.mlist{display:flex;flex-direction:column;gap:6px}
+.m{appearance:none;font:inherit;text-align:left;display:grid;grid-template-columns:52px 1fr auto;gap:10px;align-items:center;border:1px solid var(--line);background:var(--surface);color:var(--ink);border-radius:10px;padding:10px 12px;cursor:pointer}
+.m .tm{font-family:var(--mono);font-size:14px;font-variant-numeric:tabular-nums}
+.m .nm{min-width:0}.m .nm b{display:block;font-size:14.5px}.m .nm span{font-size:12px;color:var(--muted)}
+.m .tag{font-size:11.5px;color:var(--ok);font-weight:600}
+.m.now{border-color:var(--ok)}
+.m.done{opacity:.6}
+.m[aria-pressed="true"]{outline:2px solid var(--accent);outline-offset:-1px;opacity:1}
+.linkb{appearance:none;border:0;background:none;color:var(--muted);font:inherit;font-size:12px;cursor:pointer;text-decoration:underline}
 </style>
 </head>
 <body>
 <div class="wrap">
   <header>
     <h1>미팅 받아쓰기</h1>
-    <div class="sub">말하는 내용을 실시간으로 글자로 바꿉니다. 음성 파일은 저장하지 않습니다.</div>
+    <div class="sub">일정에서 미팅을 고르고 녹음하면, 말하는 내용이 그 미팅 기록으로 받아써집니다. 음성 파일은 저장하지 않습니다.</div>
   </header>
 
   <div class="warnbox" id="unsupported" hidden></div>
+
+  <section class="card sched" id="schedCard" hidden>
+    <div class="shead"><b id="schedTitle"></b><button class="linkb" id="schedClear" type="button">일정 지우기</button></div>
+    <div class="days" id="days"></div>
+    <div class="mlist" id="mlist"></div>
+  </section>
+  <div class="warnbox" id="noSched" hidden>NDR 페이지의 "받아쓰기 앱에 일정 넣기" 링크를 이 휴대폰에서 열면 일정이 들어옵니다. 일정 없이도 미팅 이름을 직접 적어 녹음할 수 있습니다.</div>
 
   <section class="card">
     <label class="f">미팅 이름<input type="text" id="title" placeholder="예: 11/5 베어링자산" list="recent" autocomplete="off"></label>
@@ -76,7 +98,7 @@ details summary{cursor:pointer;color:var(--accent);font-size:13px}
     <p class="note">녹음 중에는 화면을 켜 두세요. 화면이 꺼지거나 다른 앱으로 나가면 받아쓰기가 멈춥니다.</p>
   </section>
 
-  <h2>받아쓴 기록</h2>
+  <div class="shead"><h2>받아쓴 기록</h2><button class="b pri" id="copyDay" type="button" hidden>이 날짜 기록 모두 복사</button></div>
   <section class="sess" id="sessions"></section>
 
   <details>
@@ -84,7 +106,7 @@ details summary{cursor:pointer;color:var(--accent);font-size:13px}
     <p class="note" style="margin-top:8px">
       1. 미팅 이름을 적고 <b>녹음</b>을 누릅니다. 처음 한 번 마이크 권한을 허용하세요.<br>
       2. 끝나면 <b>정지</b>를 누릅니다. 받아쓴 텍스트가 아래 기록에 저장됩니다.<br>
-      3. <b>복사</b>를 눌러 NDR 페이지의 "녹취록으로 노트 자동 정리" 칸에 붙여넣으면 주요 내용이 노트로 정리됩니다.<br><br>
+      3. <b>이 날짜 기록 모두 복사</b>(또는 개별 <b>복사</b>)를 눌러 NDR 페이지의 "받아쓰기 한꺼번에 붙여넣기" 칸에 붙여넣으면 미팅별로 나뉘어 정리됩니다. 개별 기록은 "녹취록으로 노트 자동 정리" 칸에 붙여넣으면 주요 내용이 노트로 정리됩니다.<br><br>
       · 음성 파일은 기기에 남기지 않고, 받아쓴 텍스트만 이 휴대폰에 저장됩니다.<br>
       · 받아쓰기는 휴대폰 브라우저의 음성 인식을 씁니다. 크롬은 구글 서버, 사파리는 애플 음성 인식을 거칠 수 있습니다.<br>
       · 미팅 녹음·받아쓰기 전 회사 규정과 참석자 동의를 확인하세요.
@@ -104,6 +126,7 @@ function alertBox(msg){const b=$("unsupported");b.hidden=false;b.textContent=msg
 
 if(!SR){alertBox("이 브라우저는 음성 받아쓰기를 지원하지 않습니다. 갤럭시는 크롬, 아이폰은 사파리로 열어주세요.");$("recBtn").disabled=true}
 
+let selKey=null, selDay=null;
 let rec=null, on=false, startAt=0, tick=null, lines=[], interim="", lastHeard=0, wake=null, restarts=0;
 
 function paint(){
@@ -113,7 +136,7 @@ function paint(){
   box.scrollTop=box.scrollHeight;
 }
 function setState(t,cls){const s=$("state");s.className="state "+(cls||"");s.innerHTML=(on&&cls==="live"?'<span class="dot"></span>':"")+t}
-function saveDraft(){try{localStorage.setItem(DRAFT,JSON.stringify({title:$("title").value,startAt,lines}))}catch(e){}}
+function saveDraft(){try{localStorage.setItem(DRAFT,JSON.stringify({title:$("title").value,key:selKey,startAt,lines}))}catch(e){}}
 
 function newRec(){
   const r=new SR(); r.lang="ko-KR"; r.continuous=true; r.interimResults=true;
@@ -144,7 +167,7 @@ async function start(){
   rec=newRec();
   try{rec.start()}catch(e){on=false;alertBox("받아쓰기를 시작하지 못했습니다. 페이지를 새로고침한 뒤 다시 시도해 주세요.");return}
   try{wake=await navigator.wakeLock?.request("screen")}catch(e){}
-  $("recBtn").textContent="정지";$("recBtn").classList.add("on");$("title").disabled=true;
+  $("recBtn").textContent="정지";$("recBtn").classList.add("on");$("title").disabled=true;document.querySelectorAll(".m,.day").forEach(b=>b.disabled=true);
   setState("받아쓰는 중","live");paint();saveDraft();
   tick=setInterval(()=>{$("clock").textContent=fmt(Date.now()-startAt);
     if(on&&Date.now()-lastHeard>45000) setState("45초 넘게 인식된 말이 없습니다. 휴대폰을 화자 쪽에 가까이 두세요.","bad")},1000);
@@ -155,11 +178,12 @@ function finish(store=true){
   if(interim.trim()){lines.push({t:fmt(Date.now()-startAt),x:interim.trim()});interim=""}
   if(store&&lines.length){
     const all=load(); const title=$("title").value.trim();
-    all.unshift({id:Date.now(),title,at:startAt,dur:Date.now()-startAt,text:lines.map(l=>`[${l.t}] ${l.x}`).join("\n")});
+    all.unshift({id:Date.now(),key:selKey||null,title,at:startAt,dur:Date.now()-startAt,text:lines.map(l=>`[${l.t}] ${l.x}`).join("\n")});
     save(all); remember(title);
   }
   try{localStorage.removeItem(DRAFT)}catch(e){}
-  $("recBtn").textContent="녹음";$("recBtn").classList.remove("on");$("title").disabled=false;$("title").value="";
+  $("recBtn").textContent="녹음";$("recBtn").classList.remove("on");$("title").disabled=false;
+  if(!selKey) $("title").value=""; renderSched();
   $("clock").textContent="00:00"; setState(store&&lines.length?"저장했습니다. 아래 기록에서 복사하세요.":"대기 중", store&&lines.length?"live":"");
   lines=[];paint();renderSessions();
 }
@@ -185,7 +209,7 @@ function renderSessions(){
     let t; ta.oninput=()=>{clearTimeout(t);t=setTimeout(()=>{const a=load();const s=a.find(x=>x.id===id);if(s){s.text=ta.value;save(a)}},600)};
     el.querySelectorAll("[data-a]").forEach(b=>b.onclick=async()=>{
       const s=load().find(x=>x.id===id); if(!s) return;
-      const full=`${s.title}\n${ta.value}`;
+      const full=block(s,ta.value);
       if(b.dataset.a==="copy"){try{await navigator.clipboard.writeText(full);b.textContent="복사됨"}catch(e){ta.select();b.textContent="선택됨"}setTimeout(()=>b.textContent="복사",1500)}
       if(b.dataset.a==="share"){try{await navigator.share({title:s.title,text:full})}catch(e){}}
       if(b.dataset.a==="del"){if(b.dataset.arm!=="1"){b.dataset.arm="1";b.textContent="삭제 확인";setTimeout(()=>{b.dataset.arm="";b.textContent="삭제"},3000);return}
@@ -193,11 +217,68 @@ function renderSessions(){
     });
   });
 }
+
+/* ===== 일정 연동 ===== */
+const SKEY="mtgscribe-schedule";
+function getSched(){try{return JSON.parse(localStorage.getItem(SKEY)||"null")}catch(e){return null}}
+function b64dec(t){t=t.replace(/-/g,"+").replace(/_/g,"/");while(t.length%4)t+="=";const bin=atob(t);return new TextDecoder().decode(Uint8Array.from(bin,c=>c.charCodeAt(0)))}
+function importFromHash(){
+  const h=location.hash; if(!h.startsWith("#s=")) return;
+  try{const d=JSON.parse(b64dec(h.slice(3))); if(d&&Array.isArray(d.m)){localStorage.setItem(SKEY,JSON.stringify(d)); setState(`"${d.t}" 일정 ${d.m.length}건을 넣었습니다.`,"live")}}
+  catch(e){alertBox("일정 링크를 읽지 못했습니다. NDR 페이지에서 링크를 다시 열어주세요.")}
+  history.replaceState(null,"",location.pathname);
+}
+const mKey=m=>m[0]+"_"+m[1].replace(":","");
+const kstD=(d,t)=>new Date(`${d}T${t}:00+09:00`);
+const todayStr=()=>new Date().toLocaleDateString("sv-SE",{timeZone:"Asia/Seoul"});
+function autoSelect(){
+  const sc=getSched(); if(!sc) return;
+  const dates=[...new Set(sc.m.map(m=>m[0]))]; const t=todayStr();
+  selDay=dates.includes(t)?t:(dates.find(d=>d>t)||dates[dates.length-1]);
+  if(selDay===t){const now=new Date();
+    const cur=sc.m.filter(m=>m[0]===t).find(m=>now<kstD(m[0],m[2]));   // 진행 중이거나 다음 미팅
+    if(cur) pick(cur,false);}
+}
+function pick(m,toggle=true){
+  const k=mKey(m);
+  if(toggle&&selKey===k){selKey=null;$("title").value="";$("title").readOnly=false}
+  else{selKey=k;$("title").value=`${m[3]} (${m[4]})`;$("title").readOnly=true}
+  renderSched();
+}
+function renderSched(){
+  const sc=getSched();
+  $("schedCard").hidden=!sc; $("noSched").hidden=!!sc; $("copyDay").hidden=!sc;
+  if(!sc) return;
+  $("schedTitle").textContent=sc.t;
+  const dates=[...new Set(sc.m.map(m=>m[0]))];
+  if(!selDay) selDay=dates[0];
+  const dow=d=>"일월화수목금토"[new Date(d+"T12:00:00+09:00").getDay()];
+  $("days").innerHTML=dates.map(d=>`<button class="day" type="button" data-d="${d}" aria-pressed="${d===selDay}">${+d.slice(5,7)}/${+d.slice(8)}(${dow(d)})</button>`).join("");
+  $("days").querySelectorAll(".day").forEach(b=>b.onclick=()=>{selDay=b.dataset.d;renderSched()});
+  const done=new Set(load().map(x=>x.key).filter(Boolean)); const now=new Date();
+  const ms=sc.m.filter(m=>m[0]===selDay);
+  $("mlist").innerHTML=ms.map(m=>{const k=mKey(m);const st=now>=kstD(m[0],m[1])&&now<kstD(m[0],m[2])?"now":now>=kstD(m[0],m[2])?"done":"";
+    return `<button class="m ${st}" type="button" data-k="${k}" aria-pressed="${k===selKey}"><span class="tm">${m[1]}</span><span class="nm"><b>${esc(m[3])}</b><span>${esc(m[4])}${st==="now"?" · 진행 중":""}</span></span><span class="tag">${done.has(k)?"기록 있음":""}</span></button>`}).join("");
+  $("mlist").querySelectorAll(".m").forEach(b=>b.onclick=()=>pick(ms.find(m=>mKey(m)===b.dataset.k)));
+  if(on) document.querySelectorAll(".m,.day").forEach(b=>b.disabled=true);
+}
+$("schedClear").onclick=function(){if(this.dataset.arm!=="1"){this.dataset.arm="1";this.textContent="정말 지우기";setTimeout(()=>{this.dataset.arm="";this.textContent="일정 지우기"},3000);return}
+  localStorage.removeItem(SKEY);selKey=null;selDay=null;$("title").readOnly=false;$("title").value="";renderSched()};
+function block(s,text){return s.key?`#NDR ${s.key} ${s.title}\n${text}`:`${s.title}\n${text}`}
+$("copyDay").onclick=async function(){
+  const all=load().filter(x=>x.key&&x.key.startsWith(selDay)).reverse();
+  if(!all.length){this.textContent="이 날짜 기록이 없습니다";setTimeout(()=>this.textContent="이 날짜 기록 모두 복사",1800);return}
+  const txt=all.map(x=>block(x,x.text)).join("\n\n");
+  try{await navigator.clipboard.writeText(txt);this.textContent=`${all.length}건 복사됨`}catch(e){this.textContent="복사 실패"}
+  setTimeout(()=>this.textContent="이 날짜 기록 모두 복사",1800);
+};
+setInterval(()=>{if(!on&&getSched())renderSched()},60000);
+
 // 앱이 중간에 꺼졌을 때 남은 받아쓰기 복구
 (function(){try{const d=JSON.parse(localStorage.getItem(DRAFT)||"null");
-  if(d&&d.lines&&d.lines.length){const a=load();a.unshift({id:Date.now(),title:(d.title||"복구된 미팅")+" (중단됨)",at:d.startAt,dur:0,text:d.lines.map(l=>`[${l.t}] ${l.x}`).join("\n")});save(a)}
+  if(d&&d.lines&&d.lines.length){const a=load();a.unshift({id:Date.now(),key:d.key||null,title:(d.title||"복구된 미팅")+" (중단됨)",at:d.startAt,dur:0,text:d.lines.map(l=>`[${l.t}] ${l.x}`).join("\n")});save(a)}
   localStorage.removeItem(DRAFT)}catch(e){}})();
-fillRecent();renderSessions();
+fillRecent();importFromHash();autoSelect();renderSched();renderSessions();
 if("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(()=>{});
 </script>
 </body>
