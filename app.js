@@ -218,7 +218,7 @@ function card(s, m) {
       <div class="notebar"><button class="b" type="button" data-toggle="${m.id}" aria-expanded="${open}">기록</button><span class="nb" data-badge="${m.id}"></span></div>
       <div class="panel" data-panel="${m.id}" ${open ? "" : "hidden"}>
         <div class="row"><button class="b rec" type="button" data-rec="${m.id}">받아쓰기 시작</button><span class="st" data-rst="${m.id}"></span></div>
-        <h4>녹취 (자동 받아쓰기, 직접 수정 가능)</h4>
+        <h4>녹취 (자동 받아쓰기 · 다른 녹음 앱 결과를 붙여넣어도 됩니다)</h4>
         <textarea class="tr" id="tr-${m.id}" data-tr="${m.id}" rows="5" placeholder="받아쓰기를 시작하면 여기에 [분:초]와 함께 적힙니다.">${esc(n.tr)}</textarea>
         <div class="st" id="int-${m.id}"></div>
         <div class="row"><button class="b pri" type="button" data-ai="${m.id}">AI로 노트 정리</button><span class="st" data-ast="${m.id}"></span></div>
@@ -304,7 +304,7 @@ async function startRec(sid, mid) {
   rec.onend = () => {
     if (!R.on || R.rec !== rec) return;
     if (++R.restarts > 8) { rstatus("받아쓰기가 멈췄습니다. 정지 후 다시 시작해 주세요."); return; }
-    setTimeout(() => { if (R.on && R.rec === rec) { try { rec.start(); } catch (err) { rstatus("다시 시작하지 못했습니다. 정지 후 다시 눌러주세요."); } } }, 300);
+    setTimeout(() => { if (R.on && R.rec === rec) { try { rec.start(); } catch (err) { rstatus("다시 시작하지 못했습니다. 정지 후 다시 눌러주세요."); } } }, 80);
   };
   try { rec.start(); } catch (e) { R.on = false; msg("받아쓰기를 시작하지 못했습니다. 페이지를 새로고침한 뒤 다시 시도해 주세요."); return; }
   try { R.wake = await navigator.wakeLock?.request("screen"); } catch (e) { }
