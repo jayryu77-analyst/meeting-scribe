@@ -43,10 +43,10 @@ function fillSel() {
 $("schedSel").onchange = e => { S.cur = e.target.value; saveNow(); ui.day = null; ui.broker = "전체"; renderSched(); };
 $("newBtn").onclick = () => { resetImport(); show("import"); };
 $("cancelImport").onclick = () => { show("sched"); renderSched(); };
-$("setBtn").onclick = () => { const st = settings(); $("keyIn").value = st.key || ""; $("modelIn").value = st.model || ""; $("sumUrlIn").value = sumUrl(); show("set"); };
+$("setBtn").onclick = () => { const st = settings(); $("keyIn").value = st.key || ""; $("modelIn").value = st.model || ""; $("sumUrlIn").value = sumUrl(); $("recAppIn").value = st.recApp || "browser"; show("set"); };
 $("closeSet").onclick = () => S.schedules.length ? (show("sched"), renderSched()) : show("import");
 $("saveSet").onclick = () => {
-  try { localStorage.setItem(SET_KEY, JSON.stringify({ key: $("keyIn").value.trim(), model: $("modelIn").value.trim(), sumUrl: $("sumUrlIn").value.trim() })); } catch (e) { }
+  try { localStorage.setItem(SET_KEY, JSON.stringify({ key: $("keyIn").value.trim(), model: $("modelIn").value.trim(), sumUrl: $("sumUrlIn").value.trim(), recApp: $("recAppIn").value })); } catch (e) { }
   msg("설정을 저장했습니다.", true); $("closeSet").onclick();
 };
 
@@ -218,7 +218,8 @@ function card(s, m) {
       ${m.brokers.length ? `<div class="bks">${m.brokers.map(b => `<span class="bk">${esc(b)}</span>`).join("")}</div>` : ""}
       <div class="notebar"><button class="b" type="button" data-toggle="${m.id}" aria-expanded="${open}">기록</button><span class="nb" data-badge="${m.id}"></span></div>
       <div class="panel" data-panel="${m.id}" ${open ? "" : "hidden"}>
-        <div class="row"><button class="b rec" type="button" data-rec="${m.id}">받아쓰기 시작</button><span class="st" data-rst="${m.id}"></span></div>
+        <div class="row"><button class="b rec" type="button" data-rec="${m.id}">받아쓰기 시작</button><button class="b sm" type="button" data-alt="${m.id}"></button></div>
+        <div class="st" data-rst="${m.id}">${extStatus(n)}</div>
         <h4>녹취 (자동 받아쓰기 · 다른 녹음 앱 결과를 붙여넣어도 됩니다)</h4>
         <textarea class="tr" id="tr-${m.id}" data-tr="${m.id}" rows="5" placeholder="받아쓰기를 시작하면 여기에 [분:초]와 함께 적힙니다.">${esc(n.tr)}</textarea>
         <div class="st" id="int-${m.id}"></div>
@@ -237,7 +238,8 @@ function wire(s) {
   });
   tl.querySelectorAll("[data-tr]").forEach(t => t.oninput = () => { const n = note(s.id, t.dataset.tr); n.tr = t.value; n.at = Date.now(); saveSoon(); syncBadges(); });
   tl.querySelectorAll("[data-note]").forEach(t => t.oninput = () => { const n = note(s.id, t.dataset.note); n.note = t.value; n.at = Date.now(); saveSoon(); syncBadges(); });
-  tl.querySelectorAll("[data-rec]").forEach(b => b.onclick = () => (R.on && R.mid === b.dataset.rec) ? stopRec() : startRec(s.id, b.dataset.rec));
+  tl.querySelectorAll("[data-rec]").forEach(b => b.onclick = () => (R.on && R.mid === b.dataset.rec) ? stopRec() : (recApp() === "browser" ? startRec(s.id, b.dataset.rec) : startExternal(s.id, b.dataset.rec, recApp())));
+  tl.querySelectorAll("[data-alt]").forEach(b => b.onclick = () => recApp() === "browser" ? startExternal(s.id, b.dataset.alt, "clova") : ((R.on && R.mid === b.dataset.alt) ? stopRec() : startRec(s.id, b.dataset.alt)));
   tl.querySelectorAll("[data-ai]").forEach(b => b.onclick = () => noteAI(s.id, b.dataset.ai, b));
   tl.querySelectorAll("[data-copy]").forEach(b => b.onclick = () => copy(b.dataset.copy, b));
   paintRecButtons();
@@ -271,11 +273,14 @@ const R = { on: false, sid: null, mid: null, rec: null, startAt: 0, interim: "",
 function paintRecButtons() {
   document.querySelectorAll("[data-rec]").forEach(b => {
     const me = R.on && R.mid === b.dataset.rec;
-    b.textContent = me ? "받아쓰기 정지" : "받아쓰기 시작";
-    b.disabled = !SR;
+    const app = recApp();
+    b.textContent = me ? "받아쓰기 정지" : app === "browser" ? "받아쓰기 시작" : REC_APPS[app].name + "로 녹음";
+    b.disabled = app === "browser" && !SR;
+    const alt = document.querySelector(`[data-alt="${b.dataset.rec}"]`);
+    if (alt) { alt.textContent = app === "browser" ? "클로바노트로 녹음" : (me ? "받아쓰기 정지" : "앱 안에서 받아쓰기"); alt.hidden = app !== "browser" && !SR; }
     const t = $("tr-" + b.dataset.rec); if (t) t.readOnly = me;
   });
-  if (!SR) document.querySelectorAll("[data-rst]").forEach(e => e.textContent = "이 브라우저는 받아쓰기를 지원하지 않습니다. 갤럭시는 크롬, 아이폰은 사파리로 열어주세요.");
+  if (!SR && recApp() === "browser") document.querySelectorAll("[data-rst]").forEach(e => { if (!e.textContent) e.textContent = "이 브라우저는 받아쓰기를 지원하지 않습니다. 설정에서 녹음 방식을 클로바노트로 바꾸거나, 갤럭시는 크롬·아이폰은 사파리로 열어주세요."; });
 }
 function rstatus(t) { const e = document.querySelector(`[data-rst="${R.mid}"]`); if (e) e.textContent = t; }
 async function startRec(sid, mid) {
@@ -525,6 +530,36 @@ $("sendDay").onclick = e => { const s = cur(); if (s) sendPack(s, dayMeetings(s,
 $("sendAll").onclick = e => { const s = cur(); if (s) sendPack(s, s.meetings, e.currentTarget); };
 
 
+
+/* ---------- 외부 녹음 앱 연결 ---------- */
+const PLAY = id => encodeURIComponent("https://play.google.com/store/apps/details?id=" + id);
+const REC_APPS = {
+  browser: { name: "브라우저 받아쓰기" },
+  clova: { name: "클로바노트", intent: `intent:#Intent;action=android.intent.action.MAIN;category=android.intent.category.LAUNCHER;package=com.naver.clova.minute;S.browser_fallback_url=${PLAY("com.naver.clova.minute")};end` },
+  recorder: { name: "녹음 앱", intent: "intent:#Intent;action=android.provider.MediaStore.RECORD_SOUND;end" }
+};
+function recApp() { const a = settings().recApp; return REC_APPS[a] ? a : "browser"; }
+const recName = m => `${m.date.slice(5).replace("-", "")} ${m.start.replace(":", "")} ${m.org}`;
+function extStatus(n) {
+  if (!n || !n.ext || n.ext.done) return "";
+  return `${REC_APPS[n.ext.app]?.name || "녹음 앱"} 녹음 시작 ${new Date(n.ext.at).toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit", hour12: false })} · 끝나면 녹취를 공유 → NDR 미팅노트로 보내세요`;
+}
+async function startExternal(sid, mid, app) {
+  const s = S.schedules.find(x => x.id === sid), m = s.meetings.find(x => x.id === mid), n = note(sid, mid);
+  if (R.on) stopRec();
+  n.ext = { app, at: Date.now() }; n.at = Date.now(); saveNow();
+  const name = recName(m); let copied = false;
+  try { await navigator.clipboard.writeText(name); copied = true; } catch (e) { }
+  const st = document.querySelector(`[data-rst="${mid}"]`);
+  if (/Android/i.test(navigator.userAgent)) {
+    if (st) st.textContent = `${REC_APPS[app].name}를 여는 중…` + (copied ? ` 녹음 제목 "${name}"이 복사돼 있습니다.` : "");
+    location.href = REC_APPS[app].intent;
+    setTimeout(() => { if (st) st.textContent = extStatus(n); }, 2500);
+  } else {
+    if (st) st.textContent = `이 기기에서는 ${REC_APPS[app].name}를 자동으로 열 수 없습니다. 직접 열어 녹음하세요.` + (copied ? ` 녹음 제목 "${name}"을 복사해 두었습니다.` : "") + " 끝나면 녹취를 복사해 '녹취 넣기'로 넣으세요.";
+  }
+}
+
 /* ---------- 외부 녹취 넣기 (클로바노트·녹음 앱 공유 / 붙여넣기) ---------- */
 let inboxSrc = "";
 function findStamp(text) {
@@ -546,6 +581,11 @@ function guessMeeting(s, text) {
     const hit = s.meetings.find(m => m.date === st.date && t >= new Date(kst(m.date, m.start) - 20 * 60000) && t <= new Date(+kst(m.date, m.end) + 10 * 60000));
     if (hit) return { m: hit, why: `녹음 시각 ${md(st.date)} ${st.time} 기준으로 골랐습니다.` };
   }
+  const head = String(text || "").slice(0, 400);
+  const byName = s.meetings.find(m => head.includes(recName(m))) || s.meetings.find(m => head.includes(m.date.slice(5).replace("-", "") + " " + m.start.replace(":", "")));
+  if (byName) return { m: byName, why: "녹음 제목으로 골랐습니다." };
+  const ext = s.meetings.map(m => ({ m, n: note(s.id, m.id) })).filter(x => x.n.ext && !x.n.ext.done && Date.now() - x.n.ext.at < 8 * 3600000).sort((a, b) => b.n.ext.at - a.n.ext.at)[0];
+  if (ext) return { m: ext.m, why: `${REC_APPS[ext.n.ext.app]?.name || "녹음 앱"} 녹음을 시작한 미팅으로 골랐습니다.` };
   const now = new Date(), today = todayStr();
   const todays = s.meetings.filter(m => m.date === today);
   const live = todays.find(m => now >= kst(m.date, m.start) && now < kst(m.date, m.end));
@@ -582,6 +622,7 @@ async function inboxAdd(withAI) {
   if (!text) { msg("넣을 녹취가 없습니다."); return; }
   const m = s.meetings.find(x => x.id === mid), n = note(s.id, mid);
   n.tr = (n.tr.trim() ? n.tr.replace(/\s+$/, "") + "\n\n" : "") + `── 외부 녹취${inboxSrc ? " · " + inboxSrc : ""} (${hhmm()} 추가) ──\n` + text + "\n";
+  if (n.ext) n.ext.done = true;
   n.at = Date.now(); saveNow();
   $("inbox").hidden = true; ui.day = m.date; ui.broker = "전체"; ui.open.add(mid); renderSched();
   const el = document.querySelector(`.mtg[data-id="${mid}"]`); if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
