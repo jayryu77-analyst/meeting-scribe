@@ -9,7 +9,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="미팅노트">
 <link rel="apple-touch-icon" href="icon-192.png">
-<link rel="stylesheet" href="style.css?v=23">
+<link rel="stylesheet" href="style.css?v=25">
 </head>
 <body>
 <div class="wrap">
@@ -137,7 +137,7 @@
     <label class="f">정리 페이지 주소 (Claude 계정으로 정리)<input type="text" id="sumUrlIn" autocomplete="off"></label>
     <p class="hint">API 키 없이 쓰는 방법입니다. "정리 페이지로 보내기"를 누르면 기록이 복사되고 이 주소가 열립니다. 각자 자기 Claude 계정으로 정리되며, 결과도 각자 계정에만 저장됩니다.</p>
     <label class="f">Claude API 키 (선택 · 넣으면 앱 안에서 바로 정리)<input type="password" id="keyIn" autocomplete="off" placeholder="sk-ant-..."></label>
-    <label class="f">모델<input type="text" id="modelIn" placeholder="claude-sonnet-5-5"></label>
+    <label class="f">모델<input type="text" id="modelIn" placeholder="claude-haiku-5-5"></label>
     <p class="hint">키는 이 기기 브라우저에만 저장됩니다. 키가 없으면 "AI 요약"·"랩업 만들기"를 누를 때 기록이 복사되고 정리 페이지가 열립니다. 그 페이지에서 정리한 뒤 '앱으로 가져갈 결과 복사' → 이 앱의 '정리 결과 가져오기'를 누르면 요약이 각 미팅에 들어갑니다. 키를 넣으면 앱 안에서 바로 정리되며, 이때 녹취·메모가 Anthropic API로 전송됩니다.</p>
     <div class="row"><button class="b pri" id="saveSet" type="button">저장</button><button class="b" id="closeSet" type="button">닫기</button></div>
   </section>
@@ -150,9 +150,9 @@
   <button class="b" id="recStop" type="button">정지</button>
 </div>
 
-<script src="parser.js?v=23"></script>
-<script>window.APP_VERSION="24";</script>
-<script src="app.js?v=23"></script>
+<script src="parser.js?v=25"></script>
+<script>window.APP_VERSION="25";</script>
+<script src="app.js?v=25"></script>
 <script>if("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js",{updateViaCache:"none"}).catch(()=>{});</script>
 </body>
 </html>

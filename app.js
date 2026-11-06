@@ -435,7 +435,7 @@ async function askAI(prompt) {
   const r = await fetch("https://api.anthropic.com/v1/messages", {
     method: "POST",
     headers: { "content-type": "application/json", "x-api-key": st.key, "anthropic-version": "2023-06-01", "anthropic-dangerous-direct-browser-access": "true" },
-    body: JSON.stringify({ model: st.model || "claude-sonnet-5-5", max_tokens: 2500, messages: [{ role: "user", content: prompt }] })
+    body: JSON.stringify({ model: st.model || "claude-haiku-5-5", max_tokens: 2500, messages: [{ role: "user", content: prompt }] })
   });
   const j = await r.json().catch(() => ({}));
   if (!r.ok) { const e = new Error(j.error?.message || ("HTTP " + r.status)); e.code = "api"; throw e; }
@@ -594,7 +594,8 @@ function paintSum() {
   const list = scopeList(scope), sm = S.sums[scopeKey(scope)], tx = $("sumText"), st = $("sumState");
   if (tx.dataset.busy === "1" || document.activeElement === tx) return;
   const eng = engine();
-  $("sumRun").textContent = (sm && sm.text ? "랩업 다시 만들기" : "랩업 만들기") + (eng === "phone" ? " (묶음 복사)" : eng === "claude" ? " (정리 페이지)" : "");
+  $("sumRun").textContent = eng === "phone" ? "랩업용 원문 복사" : (sm && sm.text ? "랩업 다시 만들기" : "랩업 만들기") + (eng === "claude" ? " (정리 페이지)" : "");
+  $("sendHint").hidden = eng !== "phone"; if (eng === "phone") $("sendHint").textContent = "지금은 앱이 직접 요약하지 않는 방식입니다(휴대폰 요약 기능용 원문 복사만). 버튼 하나로 자동 요약·랩업을 하려면 설정 → Claude API 키를 넣으세요(미팅 하나에 몇 원 수준).";
   $("sumImport").hidden = eng !== "claude";
   tx.value = sm ? sm.text : "";
   tx.placeholder = eng === "phone" ? "'랩업 만들기'를 누르면 미팅별 요약이 묶여서 복사됩니다. 휴대폰 요약 기능(삼성 노트 AI 요약, 아이폰 글쓰기 도구 등)으로 요약한 결과를 여기에 붙여넣으세요. 직접 써도 됩니다." : "랩업이 여기에 들어갑니다. 직접 고쳐 써도 저장됩니다.";
