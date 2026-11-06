@@ -221,11 +221,11 @@
       if (line.includes("\t")) return line.split("\t");
       if (/,/.test(line) && line.split(",").length >= 3) return line.split(",");
       if (/\s{2,}/.test(line.trim())) return line.trim().split(/\s{2,}/);
-      // 사진 글자인식 결과: "09:10 10:00 0:50 베어링자산 김재민매니저 010-... 을지로 더존타워7층 이완기"
+      // 사진 글자인식 결과: "09:10 10:00 0:50 A자산운용 홍길동매니저 010-... OO구 OO타워7층 김브로커"
       const lead = line.trim().replace(/^[^\d]{0,3}/, ""); const head = lead.slice(0, 26).replace(/[©®°'"`,]/g, " ").replace(/(\d{1,2})\s*[.:;]+\s*(\d{2})/g, "$1:$2");
       const o = (head + lead.slice(26)).match(/^(\d{1,2}:\d{2})\s*[-~–]?\s*(\d{1,2}:\d{2})\s+(?:\d{1,2}:\d{2}\s+)?(.+)$/);
       if (o && !/[~–-]/.test(line.slice(0, 14))) { const r = freeLine(o[1], o[2], o[3]); return [r[0], r[1], r[2], r[3], r[4], r[5], r[6]]; }
-      // "09:10~10:00 베어링자산 김재민 매니저 ..." 형태
+      // "09:10~10:00 A자산운용 홍길동 매니저 ..." 형태
       const m = line.trim().match(/^(\d{1,2}:\d{2})\s*[-~–]\s*(\d{1,2}:\d{2})\s+(.+)$/);
       if (m) {
         let rest = m[3]; let tel = "";

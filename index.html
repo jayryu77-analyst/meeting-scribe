@@ -9,7 +9,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="미팅노트">
 <link rel="apple-touch-icon" href="icon-192.png">
-<link rel="stylesheet" href="style.css?v=21">
+<link rel="stylesheet" href="style.css?v=22">
 </head>
 <body>
 <div class="wrap">
@@ -41,7 +41,7 @@
         <p class="hint">인식 결과는 아래 칸에 들어갑니다. 틀린 글자를 고친 뒤 '읽어오기'를 누르세요. Claude 앱에서 받은 표도 아래 칸에 붙여넣으면 됩니다.</p>
       </div>
     </div>
-    <textarea id="pasteIn" rows="8" placeholder="또는 여기에 붙여넣기&#10;&#10;예)&#10;26.11.05(목)&#10;09:10~10:00 가나자산운용 홍길동 매니저 010-0000-0000 여의도 OO빌딩 7층&#10;10:20~11:10 다라자산 김철수 상무 을지로 OO타워 2층"></textarea>
+    <textarea id="pasteIn" rows="8" placeholder="또는 여기에 붙여넣기&#10;&#10;예)&#10;26.11.05(목)&#10;09:10~10:00 A자산운용 홍길동 매니저 010-0000-0000 OO구 OO빌딩 7층&#10;10:20~11:10 B자산운용 김철수 상무 OO구 OO타워 2층"></textarea>
     <div class="row"><button class="b pri" id="parseBtn" type="button">읽어오기</button><button class="b" id="cancelImport" type="button" hidden>취소</button></div>
 
     <div id="preview" hidden>
@@ -150,9 +150,9 @@
   <button class="b" id="recStop" type="button">정지</button>
 </div>
 
-<script src="parser.js?v=21"></script>
-<script>window.APP_VERSION="21";</script>
-<script src="app.js?v=21"></script>
+<script src="parser.js?v=22"></script>
+<script>window.APP_VERSION="22";</script>
+<script src="app.js?v=22"></script>
 <script>if("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js",{updateViaCache:"none"}).catch(()=>{});</script>
 </body>
 </html>

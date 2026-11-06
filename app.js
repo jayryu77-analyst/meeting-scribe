@@ -831,7 +831,7 @@ function findStamp(text) {
   const y = m[1] ? +m[1] : y0;
   return { date: `${y}-${pad(+m[2])}-${pad(+m[3])}`, time: `${pad(h)}:${pad(mi)}` };
 }
-// 기관 이름에서 흔한 꼬리말을 떼어 핵심 이름만 (예: 베어링자산운용 → 베어링)
+// 기관 이름에서 흔한 꼬리말을 떼어 핵심 이름만 (예: A자산운용 → A)
 const orgCore = o => String(o || "").replace(/\(.*?\)/g, "").replace(/(자산운용|자산|운용|투자자문|투신|인베스트먼트|파트너스|캐피탈|증권|생명|화재|보험|에셋|매니지먼트|AM|AMC)$/i, "").replace(/\s+/g, "").trim();
 function guessMeeting(s, text, name) {
   const all = [];
