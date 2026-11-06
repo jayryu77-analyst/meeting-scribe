@@ -41,7 +41,7 @@
         <p class="hint">인식 결과는 아래 칸에 들어갑니다. 틀린 글자를 고친 뒤 '읽어오기'를 누르세요. Claude 앱에서 받은 표도 아래 칸에 붙여넣으면 됩니다.</p>
       </div>
     </div>
-    <textarea id="pasteIn" rows="8" placeholder="또는 여기에 붙여넣기&#10;&#10;예)&#10;26.11.05(목)&#10;09:10~10:00 베어링자산 김재민 매니저 010-0000-0000 을지로 더존타워 7층&#10;10:20~11:10 스팍스자산 노기영 상무 에스타워 2층"></textarea>
+    <textarea id="pasteIn" rows="8" placeholder="또는 여기에 붙여넣기&#10;&#10;예)&#10;26.11.05(목)&#10;09:10~10:00 가나자산운용 홍길동 매니저 010-0000-0000 여의도 OO빌딩 7층&#10;10:20~11:10 다라자산 김철수 상무 을지로 OO타워 2층"></textarea>
     <div class="row"><button class="b pri" id="parseBtn" type="button">읽어오기</button><button class="b" id="cancelImport" type="button" hidden>취소</button></div>
 
     <div id="preview" hidden>
@@ -116,7 +116,7 @@
     </div>
     <div class="desk">
       <h3>기기 간 동기화 (휴대폰 ↔ PC)</h3>
-      <label class="f">GitHub 비공개 저장소 (예: jayryu77-analyst/ndr-note-data)<input type="text" id="syncRepoIn" autocomplete="off" placeholder="아이디/저장소이름"></label>
+      <label class="f">GitHub 비공개 저장소 (예: 내아이디/ndr-note-data)<input type="text" id="syncRepoIn" autocomplete="off" placeholder="아이디/저장소이름"></label>
       <label class="f">GitHub 토큰 (그 저장소 Contents 읽기·쓰기만)<input type="password" id="syncTokenIn" autocomplete="off" placeholder="github_pat_..."></label>
       <label class="f">동기화 비밀번호 (모든 기기에 같게 · 데이터 암호화)<input type="password" id="syncPassIn" autocomplete="new-password"></label>
       <div class="row"><button class="b" id="syncNow" type="button">지금 동기화</button><span class="st" id="syncSt"></span></div>

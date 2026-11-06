@@ -1008,7 +1008,7 @@ const Sync = (() => {
   }
   async function gh(c, path, opt = {}) {
     if (!/^[\x21-\x7e]+$/.test(c.syncToken)) throw new Error("토큰에 공백이나 한글이 섞여 있습니다. 토큰을 다시 복사해 붙여넣으세요.");
-    if (!/^[\w.-]+\/[\w.-]+$/.test(c.syncRepo)) throw new Error("저장소는 '아이디/저장소이름' 형식으로 넣어주세요 (예: jayryu77-analyst/ndr-note-data).");
+    if (!/^[\w.-]+\/[\w.-]+$/.test(c.syncRepo)) throw new Error("저장소는 '아이디/저장소이름' 형식으로 넣어주세요 (예: 내아이디/ndr-note-data).");
     const sep = path.includes("?") ? "&" : "?";
     const url = `https://api.github.com/repos/${c.syncRepo}` + (path ? "/" + path : "") + (!opt.method ? `${sep}t=${Date.now()}` : "");
     try {
