@@ -633,7 +633,9 @@ function exportPack(list, wrap) {
   const meetings = list.map(({ s, m }) => { const n = note(s.id, m.id); return { sid: s.id, mid: m.id, title: s.title, date: m.date, start: m.start, end: m.end, org: m.org, contact: m.contact, tr: n.tr, note: n.note }; })
     .filter(x => x.tr.trim() || x.note.trim());
   const titles = [...new Set(list.map(x => x.s.title))];
-  return { text: "NDRNOTE:" + JSON.stringify({ app: "ndr-note", v: 2, title: titles.length === 1 ? titles[0] : "NDR 전체", wrap: wrap && wrap.scope !== "meet" ? wrap : null, meetings }), count: meetings.length };
+  // 일정표 전체도 함께 보냄 (정리 페이지가 일정표 위에 요약을 보여주도록 · 전화번호·주소는 빼고)
+  const sched = [...new Set(list.map(x => x.s))].map(x => ({ sid: x.id, title: x.title, meetings: x.meetings.map(m => ({ mid: m.id, date: m.date, start: m.start, end: m.end, org: m.org, contact: m.contact, brokers: m.brokers || [] })) }));
+  return { text: "NDRNOTE:" + JSON.stringify({ app: "ndr-note", v: 2, title: titles.length === 1 ? titles[0] : "NDR 전체", wrap: wrap && wrap.scope !== "meet" ? wrap : null, sched, meetings }), count: meetings.length };
 }
 function sendPack(list, wrap, btn) {
   const { text, count } = exportPack(list, wrap);
