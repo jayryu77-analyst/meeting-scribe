@@ -1108,3 +1108,13 @@ checkShared();
 Sync.start();
 setInterval(() => { if (!$("schedView").hidden) { refreshState(); if ($("sumText").dataset.busy !== "1") paintSum(); } maybeAuto(); }, 60000);
 setTimeout(maybeAuto, 1500);
+
+/* ---------- 새 Claude 버전으로 기록 옮기기 ---------- */
+$("moveBtn").onclick = async e => {
+  saveNow();
+  const text = "NDRBACKUP:" + JSON.stringify({ app: "ndr-note", v: 1, exportedAt: new Date().toISOString(), data: S });
+  const btn = e.currentTarget, n = S.schedules.length;
+  try { await navigator.clipboard.writeText(text); btn.textContent = `일정 ${n}개 복사됨 · 새 버전에 붙여넣으세요`; }
+  catch (err) { msg("자동 복사가 막혀 있습니다. 일정 관리 → 백업 파일 저장으로 옮겨주세요."); return; }
+  window.open("https://claude.ai/artifact/CXCpCmRny3iVkvdzRHy3eY", "_blank", "noopener");
+};

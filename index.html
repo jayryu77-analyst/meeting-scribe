@@ -9,7 +9,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="미팅노트">
 <link rel="apple-touch-icon" href="icon-192.png">
-<link rel="stylesheet" href="style.css?v=26">
+<link rel="stylesheet" href="style.css?v=27">
 </head>
 <body>
 <div class="wrap">
@@ -23,7 +23,9 @@
     </div>
   </header>
 
-  <a class="warnbox newver" href="https://claude.ai/artifact/CXCpCmRny3iVkvdzRHy3eY" target="_blank" rel="noopener"><b>새 버전으로 이동 →</b> 버튼 하나로 바로 요약·랩업되는 Claude 버전 미팅노트 (휴대폰·PC 자동 동기화)</a>
+  <div class="warnbox newver"><a href="https://claude.ai/artifact/CXCpCmRny3iVkvdzRHy3eY" target="_blank" rel="noopener"><b>새 버전으로 이동 →</b></a> 버튼 하나로 바로 요약·랩업되는 Claude 버전 미팅노트입니다.
+    <div class="row" style="margin-top:6px"><button class="b pri" id="moveBtn" type="button">내 기록 복사하고 새 버전 열기</button></div>
+    <span class="st">새 버전 첫 화면의 붙여넣기 칸에 붙여넣고 '읽어오기'를 누르면 일정·메모·녹취·요약이 그대로 옮겨집니다.</span></div>
   <div class="warnbox" id="msg" hidden></div>
 
   <!-- 일정 만들기 -->
@@ -151,9 +153,9 @@
   <button class="b" id="recStop" type="button">정지</button>
 </div>
 
-<script src="parser.js?v=26"></script>
-<script>window.APP_VERSION="26";</script>
-<script src="app.js?v=26"></script>
+<script src="parser.js?v=27"></script>
+<script>window.APP_VERSION="27";</script>
+<script src="app.js?v=27"></script>
 <script>if("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js",{updateViaCache:"none"}).catch(()=>{});</script>
 </body>
 </html>
