@@ -1,15 +1,15 @@
 [hidden]{display:none!important}
 :root{
-  /* 미래에셋 CI 컬러: 오렌지 #F58220 · 딥오렌지 #CB6015 · 슬레이트 #48535B · 라이트그레이 #ECEFF4 */
+  /* 미래에셋 CI 컬러: 네이비 #043B72 · 딥네이비 #022A52 · 라이트그레이 #ECEFF4 (오렌지 #F58220는 미사용) */
   --bg:#f4f5f8;--surface:#fff;--ink:#22282e;--muted:#6b737b;--line:#e2e5eb;
-  --brand:#F58220;--accent:#CB6015;--soft:#fdf0e4;--mark:#fbd3ab;--slate:#48535B;
+  --brand:#043B72;--accent:#043B72;--soft:#e6edf6;--mark:#c9d8ec;--slate:#022A52;
   --rec:#d93d3d;--ok:#0f8a5f;--oksoft:#e2f5ec;--warn:#a85a0c;--warnsoft:#fdf1dc;
   --sans:"Pretendard","Apple SD Gothic Neo","Malgun Gothic","Noto Sans KR",-apple-system,BlinkMacSystemFont,sans-serif;
   --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
 }
 @media (prefers-color-scheme:dark){:root{
   --bg:#15181c;--surface:#1f2429;--ink:#eceff4;--muted:#a1a8b0;--line:#343b42;
-  --brand:#F58220;--accent:#F58220;--soft:#3a2614;--mark:#7a4310;--slate:#2b3238;
+  --brand:#5b8fd1;--accent:#7fa9e0;--soft:#16263b;--mark:#24406a;--slate:#0f1e33;
   --ok:#4fd19c;--oksoft:#163328;--warn:#f0a44b;--warnsoft:#3a2a12;color-scheme:dark}}
 *{box-sizing:border-box}
 body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--sans);font-size:15px;line-height:1.5}
@@ -126,7 +126,7 @@ textarea{font:inherit;font-size:15px;line-height:1.6;color:var(--ink);background
 
 /* ---------- 미래에셋 스타일 ---------- */
 body{-webkit-font-smoothing:antialiased}
-.top{background:var(--slate);color:#fff;margin:calc(-14px - env(safe-area-inset-top)) calc(-1 * max(16px,env(safe-area-inset-left))) 0;padding:calc(12px + env(safe-area-inset-top)) max(16px,env(safe-area-inset-right)) 12px max(16px,env(safe-area-inset-left));border-bottom:3px solid var(--brand)}
+.top{background:var(--slate);color:#fff;margin:calc(-14px - env(safe-area-inset-top)) calc(-1 * max(16px,env(safe-area-inset-left))) 0;padding:calc(12px + env(safe-area-inset-top)) max(16px,env(safe-area-inset-right)) 12px max(16px,env(safe-area-inset-left));border-bottom:3px solid #5b8fd1}
 @media (min-width:760px){.top{margin-left:0;margin-right:0;border-radius:0 0 12px 12px}}
 .brand{display:flex;flex-direction:column;gap:1px}
 .brand .eyebrow2{font-size:10.5px;letter-spacing:.14em;color:var(--brand);font-weight:700}
@@ -156,3 +156,4 @@ body{-webkit-font-smoothing:antialiased}
 .foot{display:flex;flex-direction:column;gap:6px;border-top:1px solid var(--line);padding-top:12px}
 .credit{font-size:11px;color:var(--muted);letter-spacing:.02em}
 .credit b{color:var(--accent);font-weight:600}
+@media (prefers-color-scheme:dark){.b.pri,.tab[aria-selected="true"]{background:#2f5f9e;border-color:#2f5f9e}}
