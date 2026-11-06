@@ -157,3 +157,6 @@ body{-webkit-font-smoothing:antialiased}
 .credit{font-size:11px;color:var(--muted);letter-spacing:.02em}
 .credit b{color:var(--accent);font-weight:600}
 @media (prefers-color-scheme:dark){.b.pri,.tab[aria-selected="true"]{background:#2f5f9e;border-color:#2f5f9e}}
+
+.newver{display:block;text-decoration:none;color:var(--accent);background:var(--soft);font-weight:500}
+.newver b{font-weight:700}
