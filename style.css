@@ -58,7 +58,7 @@ textarea{font:inherit;font-size:15px;line-height:1.6;color:var(--ink);background
 .sum{background:var(--surface);border:1px solid var(--accent);border-radius:12px;padding:12px 14px;display:flex;flex-direction:column;gap:10px}
 .sumhead{display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap}
 .st{font-size:12px;color:var(--muted)}
-.sumtext{white-space:pre-wrap;font-size:14px;line-height:1.65;background:var(--soft);border-radius:8px;padding:12px;overflow-wrap:anywhere}
+.sumtext{white-space:pre-wrap;width:100%;min-height:120px;border:1px solid var(--line);color:var(--ink);font:inherit;font-size:14px;resize:vertical;font-size:14px;line-height:1.65;background:var(--soft);border-radius:8px;padding:12px;overflow-wrap:anywhere}
 .timeline{display:flex;flex-direction:column;gap:10px}
 .mtg{display:grid;grid-template-columns:60px 1fr;gap:12px;background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:14px}
 .mtg.now{border-color:var(--ok);box-shadow:0 0 0 1px var(--ok)}

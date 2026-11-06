@@ -43,13 +43,21 @@ function fillSel() {
 $("schedSel").onchange = e => { S.cur = e.target.value; saveNow(); ui.day = null; ui.broker = "전체"; renderSched(); };
 $("newBtn").onclick = () => { resetImport(); show("import"); };
 $("cancelImport").onclick = () => { show("sched"); renderSched(); };
-$("setBtn").onclick = () => { const st = settings(); $("keyIn").value = st.key || ""; $("modelIn").value = st.model || ""; $("sumUrlIn").value = sumUrl(); fillRecApps(); $("gainIn").value = String(st.gain || 1); fillMics(st.micId); $("deskSet").hidden = !DESKTOP; $("syncRepoIn").value = st.syncRepo || ""; $("syncTokenIn").value = st.syncToken || ""; $("syncPassIn").value = st.syncPass || ""; Sync.paint(); show("set"); };
+$("setBtn").onclick = () => { const st = settings(); $("aiModeIn").value = st.aiMode || "auto"; paintAiSt(); $("keyIn").value = st.key || ""; $("modelIn").value = st.model || ""; $("sumUrlIn").value = sumUrl(); fillRecApps(); $("gainIn").value = String(st.gain || 1); fillMics(st.micId); $("deskSet").hidden = !DESKTOP; $("syncRepoIn").value = st.syncRepo || ""; $("syncTokenIn").value = st.syncToken || ""; $("syncPassIn").value = st.syncPass || ""; Sync.paint(); show("set"); };
 $("closeSet").onclick = () => S.schedules.length ? (show("sched"), renderSched()) : show("import");
 $("saveSet").onclick = () => {
-  try { localStorage.setItem(SET_KEY, JSON.stringify({ ...settings(), key: $("keyIn").value.trim(), model: $("modelIn").value.trim(), sumUrl: $("sumUrlIn").value.trim(), recApp: $("recAppIn").value, gain: +$("gainIn").value || 1, micId: $("micIn").value, syncRepo: $("syncRepoIn").value.trim().replace(/^https?:\/\/github.com\//, "").replace(/\/$/, ""), syncToken: $("syncTokenIn").value.trim(), syncPass: $("syncPassIn").value })); } catch (e) { }
+  try { localStorage.setItem(SET_KEY, JSON.stringify({ ...settings(), key: $("keyIn").value.trim(), model: $("modelIn").value.trim(), sumUrl: $("sumUrlIn").value.trim(), recApp: $("recAppIn").value, aiMode: $("aiModeIn").value, gain: +$("gainIn").value || 1, micId: $("micIn").value, syncRepo: $("syncRepoIn").value.trim().replace(/^https?:\/\/github.com\//, "").replace(/\/$/, ""), syncToken: $("syncTokenIn").value.trim(), syncPass: $("syncPassIn").value })); } catch (e) { }
   msg("설정을 저장했습니다.", true); $("closeSet").onclick(); Sync.now();
 };
 
+function paintAiSt() {
+  const v = $("aiModeIn").value, st = settings();
+  const now = v === "auto" ? engine() : v;
+  $("aiSt").textContent = `크롬 내장 AI: ${NANO.state}. ` + (v === "auto" ? `지금은 '${ENG_NAME[now]}'(으)로 요약합니다.` : "") +
+    (now === "phone" ? (IS_IOS ? " 아이폰은 요약 칸에서 '글쓰기 도구 → 요약'을 씁니다." : IS_ANDROID ? " 갤럭시는 삼성 녹음 앱 요약을 공유하거나, 삼성 노트 AI 요약 결과를 붙여넣습니다." : "") : "") +
+    (v === "api" && !st.key && !$("keyIn").value ? " API 키를 넣어야 합니다." : "");
+}
+$("aiModeIn").onchange = paintAiSt;
 /* ---------- 일정 가져오기 ---------- */
 let parsed = null;
 function resetImport() { parsed = null; $("preview").hidden = true; $("pasteIn").value = ""; $("fileIn").value = ""; photoFile = null; $("photoBox").hidden = true; }
@@ -433,6 +441,70 @@ async function askAI(prompt) {
   if (!r.ok) { const e = new Error(j.error?.message || ("HTTP " + r.status)); e.code = "api"; throw e; }
   return (j.content || []).map(c => c.text || "").join("").trim();
 }
+/* ---------- 요약 엔진: API 키 → 크롬 내장 AI(PC) → 휴대폰 기능 ---------- */
+const NANO = { ok: false, lang: "ko", state: "확인 중" };
+const nanoOpts = l => ({ expectedInputs: [{ type: "text", languages: [l] }], expectedOutputs: [{ type: "text", languages: [l] }] });
+async function nanoCheck() {
+  if (!("LanguageModel" in self)) { NANO.state = "이 브라우저에는 없음 (PC 크롬 148 이상, 고사양 PC에서만)"; return; }
+  for (const l of ["ko", "en"]) {
+    try { const a = await LanguageModel.availability(nanoOpts(l)); if (a !== "unavailable") { NANO.ok = true; NANO.lang = l; NANO.state = (a === "available" ? "사용 가능" : "처음 쓸 때 모델을 받습니다(수 GB, 와이파이)") + (l === "ko" ? "" : " · 한국어 공식 지원 전이라 품질이 낮을 수 있음"); return; } } catch (e) { }
+  }
+  NANO.state = "이 PC에서는 쓸 수 없음 (사양 또는 언어 미지원)";
+}
+nanoCheck();
+async function nanoAsk(prompt, prog) {
+  const ses = await LanguageModel.create({ ...nanoOpts(NANO.lang), monitor(m) { m.addEventListener("downloadprogress", e => prog && prog(`크롬 AI 모델 받는 중 ${Math.round(e.loaded * 100)}%`)); } });
+  try { return String(await ses.prompt(prompt)).trim(); } finally { try { ses.destroy(); } catch (e) { } }
+}
+// 크롬 내장 AI는 한 번에 읽는 양이 작아서, 길면 나눠 요약한 뒤 합칩니다
+async function nanoReduce(text, partAsk, finalAsk, prog, size = 2500) {
+  text = String(text || "").trim();
+  if (text.length > size) {
+    const parts = []; for (let i = 0; i < text.length; i += size) parts.push(text.slice(i, i + size));
+    const out = [];
+    for (let i = 0; i < parts.length; i++) { prog && prog(`크롬 AI 요약 중 ${i + 1}/${parts.length}`); out.push(await nanoAsk(partAsk + "\n\n" + parts[i], prog)); }
+    text = out.join("\n");
+    if (text.length > size * 2) return nanoReduce(text, partAsk, finalAsk, prog, size);
+  }
+  prog && prog("크롬 AI 정리 마무리 중");
+  return nanoAsk(finalAsk + "\n\n" + text, prog);
+}
+const MEET_FMT = "[투자자 질문]\n- \n[회사 답변 핵심(숫자 포함)]\n- \n[투자자 반응·톤]\n- \n[후속 확인]\n- ";
+function nanoMeeting(s, m, n, prog) {
+  const src = (n.tr || "").trim() + (n.note.trim() ? "\n[애널리스트 메모]\n" + n.note.trim() : "");
+  return nanoReduce(src, "다음은 기관투자자 미팅 녹취 일부입니다. 투자자 질문과 회사 답변(숫자 포함)만 한국어 글머리표로 짧게 정리하세요. 없는 내용은 쓰지 마세요.",
+    `다음은 기관투자자 ${m.org} 미팅 기록입니다. 기록에 있는 내용만 한국어로, 아래 형식 그대로 짧게 정리하세요.\n${MEET_FMT}`, prog);
+}
+function nanoWrap(scope, list, label, prog) {
+  const body = withNotes(list).map(({ s, m }) => `[${md(m.date)} ${m.start} ${m.org}]\n${mtext(s, m, 1500)}`).join("\n\n");
+  return nanoReduce(body, "다음 기관투자자 미팅 노트들에서 기관별 주요 질문과 반응을 한국어 글머리표로 짧게 정리하세요. 기관 이름은 남기세요.",
+    `다음은 NDR(${label}) 미팅 노트입니다. 기록에 있는 내용만 한국어로 짧게 정리하세요.\n■ 한 줄 요약\n■ 공통적으로 나온 질문 Top 3\n■ 기관별 한 줄 (기관명: 관심사 / 톤)\n■ 후속 확인 사항`, prog, 3000);
+}
+// 지금 쓸 요약 방식
+function engine() {
+  const st = settings(), m = st.aiMode || "auto";
+  if (m === "api") return st.key ? "api" : "phone";
+  if (m === "chrome") return NANO.ok ? "chrome" : "phone";
+  if (m === "phone" || m === "claude") return m;
+  return st.key ? "api" : NANO.ok ? "chrome" : "phone";
+}
+const ENG_NAME = { api: "Claude API", chrome: "크롬 내장 AI", phone: "휴대폰 요약 기능", claude: "Claude 정리 페이지" };
+const IS_IOS = /iPhone|iPad|iPod/i.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+const IS_ANDROID = /Android/i.test(navigator.userAgent);
+function phoneHow() {
+  if (IS_IOS) return "아이폰: 요약 칸에 들어간 글이 선택된 상태에서 '글쓰기 도구 → 요약'을 누르고 결과로 바꾸세요. (아이폰 15 Pro 이상·Apple Intelligence 켜짐)";
+  if (IS_ANDROID) return "갤럭시: 녹취를 복사했습니다. 삼성 노트 새 노트에 붙여넣고 ✦(Galaxy AI) → 요약 → 복사한 뒤, 이 미팅의 요약 칸에 붙여넣으세요. 삼성 녹음 앱으로 녹음했다면 녹음 앱의 '요약 → 공유 → 미팅노트'가 더 간단합니다.";
+  return "녹취를 복사했습니다. 휴대폰의 요약 기능이나 다른 도구로 요약한 뒤 요약 칸에 붙여넣으세요. (이 PC에서는 크롬 내장 AI를 쓸 수 없습니다: " + NANO.state + ")";
+}
+function phoneMeeting(s, m) {
+  const n = note(s.id, m.id), src = ((n.tr || "").replace(/^── .*──\s*$/gm, "").trim() || n.note.trim());
+  ui.open.add(m.id); renderTimeline(s);
+  const ta = $("sum-" + m.id);
+  if (IS_IOS && ta) { if (!ta.value.trim()) { ta.value = src; n.sum = src; n.at = Date.now(); saveSoon(); } ta.focus(); ta.select(); ta.scrollIntoView({ behavior: "smooth", block: "center" }); msg(phoneHow(), true); return; }
+  (navigator.clipboard ? navigator.clipboard.writeText(src) : Promise.reject()).then(() => msg(phoneHow(), true)).catch(() => msg("자동 복사가 막혀 있습니다. 녹취 칸을 길게 눌러 전체 선택·복사하세요. " + phoneHow()));
+  if (ta) ta.scrollIntoView({ behavior: "smooth", block: "center" });
+}
+
 function meetingPrompt(s, m, n) {
   return `셀사이드 애널리스트가 ${s.title}에서 기관투자자 ${m.org}${m.contact ? "(" + m.contact + ")" : ""}와 한 미팅 기록입니다.
 녹취는 음성 인식 결과라 오류가 섞여 있을 수 있습니다. 주요 내용 위주로 미팅 노트를 만드세요. 기록에 없는 내용은 지어내지 마세요.
@@ -458,16 +530,18 @@ async function noteAI(sid, mid, btn) { return summarizeMeetings(S.schedules.find
 function summarizeMeetings(s, mids, btn) {
   const ms = mids.map(id => s.meetings.find(m => m.id === id)).filter(m => { const n = note(s.id, m.id); return n.tr.trim() || n.note.trim(); });
   if (!ms.length) { msg("요약할 녹취나 메모가 없습니다."); return; }
-  if (!settings().key) { sendPack(ms.map(m => ({ s, m })), { scope: "meet" }, btn); return; }
+  const eng = engine();
+  if (eng === "claude") { sendPack(ms.map(m => ({ s, m })), { scope: "meet" }, btn); return; }
+  if (eng === "phone") { phoneMeeting(s, ms[0]); if (ms.length > 1) msg(`요약할 미팅이 ${ms.length}건입니다. 각 미팅의 'AI 요약'을 하나씩 눌러주세요. ` + phoneHow(), true); return; }
   return (async () => {
     let ok = 0;
     for (const m of ms) {
-      const st = document.querySelector(`[data-ast="${m.id}"]`) || {}; st.textContent = "요약하는 중…";
+      const st = () => document.querySelector(`[data-ast="${m.id}"]`) || {}; st().textContent = "요약하는 중…";
       try {
         const n = note(s.id, m.id);
-        n.sum = await askAI(meetingPrompt(s, m, n)); n.sumAt = Date.now(); n.at = Date.now(); saveNow(); ok++;
-        st.textContent = "요약을 넣었습니다."; paintSumBox(m.id);
-      } catch (e) { st.textContent = "요약하지 못했습니다: " + e.message; }
+        n.sum = eng === "chrome" ? await nanoMeeting(s, m, n, t => st().textContent = t) : await askAI(meetingPrompt(s, m, n)); n.sumAt = Date.now(); n.at = Date.now(); saveNow(); ok++;
+        paintSumBox(m.id); st().textContent = `요약을 넣었습니다 (${ENG_NAME[eng]}).`;
+      } catch (e) { st().textContent = "요약하지 못했습니다: " + e.message + (eng === "chrome" ? " · 설정에서 요약 방식을 '휴대폰 요약 기능'으로 바꿔 보세요." : ""); }
     }
     if (ok) msg(`미팅 ${ok}건 요약을 넣었습니다.`, true);
     paintSum();
@@ -518,34 +592,47 @@ function paintSum() {
   const s = cur(); if (!s) return; const scope = SC();
   const o = $("wrapScope").options; o[0].textContent = `이 날 (${md(ui.day)})`; o[1].textContent = "이 일정 전체"; o[2].textContent = `저장된 모든 일정 (${S.schedules.length})`;
   const list = scopeList(scope), sm = S.sums[scopeKey(scope)], tx = $("sumText"), st = $("sumState");
-  if (tx.dataset.busy === "1") return;
-  const noKey = !settings().key;
-  $("sumRun").textContent = (sm && sm.text ? "랩업 다시 만들기" : "랩업 만들기") + (noKey ? " (정리 페이지)" : "");
-  if (sm && sm.text) {
-    tx.hidden = false; tx.textContent = sm.text;
-    st.textContent = lastAtL(list) > sm.at ? " · 랩업 이후 기록이 바뀌었습니다" : ` · ${new Date(sm.at).toLocaleString("ko-KR", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" })} 작성`;
-  } else {
-    tx.hidden = true;
-    const n = withNotes(list).length;
-    st.textContent = !n ? " · 아직 기록이 없습니다" : ` · 기록 있는 미팅 ${n}건` + (scope === "day" && !noKey && !dayEnded(s, ui.day) ? " · 마지막 미팅이 끝나면 자동으로 만듭니다" : "");
-  }
+  if (tx.dataset.busy === "1" || document.activeElement === tx) return;
+  const eng = engine();
+  $("sumRun").textContent = (sm && sm.text ? "랩업 다시 만들기" : "랩업 만들기") + (eng === "phone" ? " (묶음 복사)" : eng === "claude" ? " (정리 페이지)" : "");
+  $("sumImport").hidden = eng !== "claude";
+  tx.value = sm ? sm.text : "";
+  tx.placeholder = eng === "phone" ? "'랩업 만들기'를 누르면 미팅별 요약이 묶여서 복사됩니다. 휴대폰 요약 기능(삼성 노트 AI 요약, 아이폰 글쓰기 도구 등)으로 요약한 결과를 여기에 붙여넣으세요. 직접 써도 됩니다." : "랩업이 여기에 들어갑니다. 직접 고쳐 써도 저장됩니다.";
+  if (sm && sm.text) st.textContent = lastAtL(list) > sm.at ? " · 랩업 이후 기록이 바뀌었습니다" : ` · ${new Date(sm.at).toLocaleString("ko-KR", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" })} 저장`;
+  else { const n = withNotes(list).length; st.textContent = !n ? " · 아직 기록이 없습니다" : ` · 기록 있는 미팅 ${n}건`; }
+}
+$("sumText").addEventListener("input", () => { const k = scopeKey(SC()), v = $("sumText").value; if (v.trim()) S.sums[k] = { text: v, at: Date.now() }; else delete S.sums[k]; saveSoon(); });
+$("sumText").addEventListener("blur", () => paintSum());
+function wrapBundle(scope, list, label) {
+  return `다음은 NDR(${label}) 기관투자자 미팅별 노트입니다. 전체 한 줄 요약, 공통 질문 Top 3~5, 기관별 한 줄(관심사/톤), 후속 확인 사항으로 요약해 주세요.\n\n` +
+    withNotes(list).map(({ s, m }) => `[${md(m.date)} ${m.start} ${m.org}${m.contact ? " (" + m.contact + ")" : ""}]\n${mtext(s, m, scope === "day" ? 4000 : 2000)}`).join("\n\n");
 }
 async function runWrap(scope, s, d, btn) {
   const list = scopeList(scope, s, d), label = scopeLabel(scope, s, d), key = scopeKey(scope, s, d);
-  if (!withNotes(list).length && !list.some(x => note(x.s.id, x.m.id).tr.trim())) { $("sumState").textContent = " · 정리할 기록이 없습니다"; return; }
-  if (!settings().key) { if (btn) sendPack(list, { scope, key, label }, btn); return; }
-  const tx = $("sumText"), isCur = () => scopeKey(SC()) === key;
-  if (isCur()) { tx.hidden = false; tx.dataset.busy = "1"; tx.textContent = "정리하는 중…"; }
+  if (!withNotes(list).length) { $("sumState").textContent = " · 정리할 기록이 없습니다"; return; }
+  const eng = engine();
+  if (eng === "claude") { if (btn) sendPack(list, { scope, key, label }, btn); return; }
+  if (eng === "phone") {
+    if (!btn) return;
+    const unsum = list.filter(x => { const n = note(x.s.id, x.m.id); return n.tr.trim() && !(n.sum || "").trim(); }).length;
+    copy(wrapBundle(scope, list, label), btn).then(() => {
+      msg(`미팅 ${withNotes(list).length}건 노트를 묶어 복사했습니다.` + (unsum ? ` (요약이 없는 ${unsum}건은 녹취 앞부분이 들어갑니다)` : "") + (IS_IOS ? " 아래 랩업 칸에 붙여넣은 뒤 전체 선택 → 글쓰기 도구 → 요약으로 바꾸세요." : IS_ANDROID ? " 삼성 노트에 붙여넣고 ✦ → 요약한 결과를 아래 랩업 칸에 붙여넣으세요." : " 요약 도구로 요약한 결과를 아래 랩업 칸에 붙여넣으세요."), true);
+      $("sumText").focus();
+    });
+    return;
+  }
+  const ask = eng === "chrome" ? null : askAI;
+  const tx = $("sumText"), isCur = () => scopeKey(SC()) === key, say = t => { if (isCur()) $("sumState").textContent = " · " + t; };
+  if (isCur()) { tx.dataset.busy = "1"; tx.value = "정리하는 중…"; }
   try {
-    // 요약이 없는 미팅부터 요약
-    for (const { s: x, m } of list) {
+    for (const { s: x, m } of list) {   // 요약이 없는 미팅부터 요약
       const n = note(x.id, m.id);
-      if (!(n.sum || "").trim() && n.tr.trim()) { if (isCur()) $("sumState").textContent = ` · ${m.org} 미팅 요약 중`; try { n.sum = await askAI(meetingPrompt(x, m, n)); n.sumAt = n.at = Date.now(); saveNow(); paintSumBox(m.id); } catch (e) { } }
+      if (!(n.sum || "").trim() && n.tr.trim()) { say(`${m.org} 미팅 요약 중`); try { n.sum = ask ? await ask(meetingPrompt(x, m, n)) : await nanoMeeting(x, m, n, say); n.sumAt = n.at = Date.now(); saveNow(); paintSumBox(m.id); } catch (e) { } }
     }
-    if (isCur()) $("sumState").textContent = " · 랩업 작성 중";
-    const text = await askAI(wrapPrompt(scope, list, label));
+    say("랩업 작성 중");
+    const text = ask ? await ask(wrapPrompt(scope, list, label)) : await nanoWrap(scope, list, label, say);
     S.sums[key] = { text, at: Date.now() }; saveNow();
-  } catch (e) { if (isCur()) $("sumState").textContent = " · 만들지 못했습니다: " + e.message; tx.dataset.busy = ""; if (!S.sums[key]) tx.hidden = true; return; }
+  } catch (e) { tx.dataset.busy = ""; paintSum(); say("만들지 못했습니다: " + e.message); return; }
   tx.dataset.busy = ""; paintSum();
 }
 $("wrapScope").onchange = () => { try { localStorage.setItem("ndrnote-scope", SC()); } catch (e) { } paintSum(); };
@@ -563,7 +650,7 @@ $("sumImport").onclick = async () => {
 };
 const autoTried = {};
 async function maybeAuto() {
-  if (!settings().key) return;
+  if (engine() !== "api") return;   // 크롬 AI·휴대폰 방식은 버튼을 눌렀을 때만
   for (const s of S.schedules) for (const d of dates(s)) {
     const k = sumKey(s.id, d);
     if (autoTried[k] || S.sums[k] || !dayEnded(s, d) || !dayHasNotes(s, d)) continue;
@@ -806,7 +893,7 @@ function refreshGuess() {
   $("inMeetingBox").hidden = false;
   const g = guessMeeting(s, v, inboxSrc);
   if (g.m) $("inMeeting").value = g.m.id;
-  $("inGuess").textContent = v.trim() ? "자동 선택: " + g.why : "";
+  $("inGuess").textContent = v.trim() ? "자동 선택: " + g.why + ($("inField").value === "auto" ? (looksSummary(v) ? " · 요약으로 보여서 요약 칸에 넣습니다" : " · 녹취 칸에 넣습니다") : "") : "";
 }
 $("openInbox").onclick = () => openInbox("", "");
 $("inText").addEventListener("input", () => { clearTimeout(refreshGuess.t); refreshGuess.t = setTimeout(refreshGuess, 400); });
@@ -828,8 +915,17 @@ $("inFile").onchange = async e => {
   if (ok.length === 1 && !IN.items.length) { inboxSrc = ok[0].name; $("inText").value = ok[0].text; refreshGuess(); }
   else setItems([...IN.items, ...ok]);
 };
+$("inField").onchange = refreshGuess;
 $("inCancel").onclick = () => { $("inbox").hidden = true; setItems([]); };
 $("inPaste").classList.add("pri");
+// 받은 글이 녹취인지 요약인지 (삼성 녹음 앱·클로바노트 요약을 공유하면 요약 칸으로)
+function looksSummary(t) { const ts = (t.match(/\b\d{1,2}:\d{2}\b/g) || []).length, spk = (t.match(/참석자\s*\d|화자\s*\d|Speaker\s*\d/gi) || []).length; return ts < 3 && spk < 2 && t.length < 5000; }
+function fieldFor(text) { const v = $("inField").value; return v === "auto" ? (looksSummary(text) ? "sum" : "tr") : v; }
+function putSummary(s, mid, text, src) {
+  const n = note(s.id, mid);
+  n.sum = ((n.sum || "").trim() ? n.sum.replace(/\s+$/, "") + "\n\n" : "") + (src ? `(${src})\n` : "") + text.trim();
+  n.sumAt = n.at = Date.now();
+}
 function putTranscript(s, mid, text, src) {
   const n = note(s.id, mid);
   n.tr = (n.tr.trim() ? n.tr.replace(/\s+$/, "") + "\n\n" : "") + `── 외부 녹취${src ? " · " + src : ""} (${hhmm()} 추가) ──\n` + text.trim() + "\n";
@@ -842,13 +938,15 @@ function inboxAdd(withAI, btn) {
   let jobs;
   if (IN.items.length) jobs = IN.items.map(x => ({ mid: x.mid, text: x.text, src: x.name }));
   else { const text = $("inText").value.trim(); if (!text) { msg("넣을 녹취가 없습니다."); return; } jobs = [{ mid: $("inMeeting").value, text, src: inboxSrc }]; }
-  jobs.forEach(j => putTranscript(s, j.mid, j.text, j.src));
+  let nSum = 0;
+  jobs.forEach(j => { if (fieldFor(j.text) === "sum") { putSummary(s, j.mid, j.text, j.src); nSum++; } else putTranscript(s, j.mid, j.text, j.src); });
+  if (nSum === jobs.length) withAI = false;   // 이미 요약된 글이면 다시 요약하지 않음
   saveNow();
   const mids = [...new Set(jobs.map(j => j.mid))], first = s.meetings.find(m => m.id === mids[0]);
   $("inbox").hidden = true; setItems([]); ui.day = first.date; ui.broker = "전체"; mids.forEach(id => ui.open.add(id)); renderSched();
   const el = document.querySelector(`.mtg[data-id="${mids[0]}"]`); if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
   const names = mids.map(id => s.meetings.find(m => m.id === id).org).join(", ");
-  msg(`녹취를 넣었습니다: ${names}`, true);
+  msg((nSum ? `요약 칸에 ${nSum}건` + (jobs.length > nSum ? `, 녹취 칸에 ${jobs.length - nSum}건` : "") : "녹취를") + ` 넣었습니다: ${names}`, true);
   if (withAI) summarizeMeetings(s, mids, btn);
 }
 $("inAdd").onclick = e => inboxAdd(false, e.currentTarget);
