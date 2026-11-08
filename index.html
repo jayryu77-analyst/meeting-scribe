@@ -9,7 +9,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="미팅노트">
 <link rel="apple-touch-icon" href="icon-192.png">
-<link rel="stylesheet" href="style.css?v=27">
+<link rel="stylesheet" href="style.css?v=28">
 </head>
 <body>
 <div class="wrap">
@@ -128,10 +128,10 @@
     <div class="desk">
       <h3>요약 방식</h3>
       <label class="f">AI 요약·랩업을 누르면<select id="aiModeIn">
-        <option value="auto">자동 (API 키 → 크롬 내장 AI → 휴대폰 기능 순)</option>
+        <option value="auto">자동 (API 키 → 크롬 내장 AI → Claude 미팅노트 순)</option>
         <option value="phone">휴대폰 요약 기능 (갤럭시 AI · Apple Intelligence)</option>
         <option value="chrome">크롬 내장 AI (PC 전용 · 실험적)</option>
-        <option value="claude">Claude 정리 페이지 (내 Claude 계정)</option>
+        <option value="claude">Claude 미팅노트로 요약 (내 Claude 계정 · 무료)</option>
         <option value="api">Claude API 키 (앱 안에서 바로 · 유료)</option>
       </select></label>
       <p class="hint" id="aiSt"></p>
@@ -153,9 +153,9 @@
   <button class="b" id="recStop" type="button">정지</button>
 </div>
 
-<script src="parser.js?v=27"></script>
-<script>window.APP_VERSION="27";</script>
-<script src="app.js?v=27"></script>
+<script src="parser.js?v=28"></script>
+<script>window.APP_VERSION="28";</script>
+<script src="app.js?v=28"></script>
 <script>if("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js",{updateViaCache:"none"}).catch(()=>{});</script>
 </body>
 </html>

@@ -486,7 +486,7 @@ function engine() {
   if (m === "api") return st.key ? "api" : "phone";
   if (m === "chrome") return NANO.ok ? "chrome" : "phone";
   if (m === "phone" || m === "claude") return m;
-  return st.key ? "api" : NANO.ok ? "chrome" : "phone";
+  return st.key ? "api" : NANO.ok ? "chrome" : "claude";   // 키·크롬 AI가 없으면 Claude 미팅노트(새 버전)로 요약
 }
 const ENG_NAME = { api: "Claude API", chrome: "크롬 내장 AI", phone: "휴대폰 요약 기능", claude: "Claude 정리 페이지" };
 const IS_IOS = /iPhone|iPad|iPod/i.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
@@ -594,7 +594,7 @@ function paintSum() {
   const list = scopeList(scope), sm = S.sums[scopeKey(scope)], tx = $("sumText"), st = $("sumState");
   if (tx.dataset.busy === "1" || document.activeElement === tx) return;
   const eng = engine();
-  $("sumRun").textContent = eng === "phone" ? "랩업용 원문 복사" : (sm && sm.text ? "랩업 다시 만들기" : "랩업 만들기") + (eng === "claude" ? " (정리 페이지)" : "");
+  $("sumRun").textContent = eng === "phone" ? "랩업용 원문 복사" : (sm && sm.text ? "랩업 다시 만들기" : "랩업 만들기") + (eng === "claude" ? " (Claude)" : "");
   $("sendHint").hidden = eng !== "phone"; if (eng === "phone") $("sendHint").textContent = "지금은 앱이 직접 요약하지 않는 방식입니다(휴대폰 요약 기능용 원문 복사만). 버튼 하나로 자동 요약·랩업을 하려면 설정 → Claude API 키를 넣으세요(미팅 하나에 몇 원 수준).";
   $("sumImport").hidden = eng !== "claude";
   tx.value = sm ? sm.text : "";
@@ -706,8 +706,8 @@ $("importBackup").onchange = async e => {
 
 
 /* ---------- API 없이: Claude 앱으로 보내기 · 정리 페이지 ---------- */
-const DEFAULT_SUM_URL = "https://claude.ai/artifact/2eDDmyiEeoM7bumQCWbb7m";
-function sumUrl() { return settings().sumUrl || DEFAULT_SUM_URL; }
+const DEFAULT_SUM_URL = "https://claude.ai/artifact/CXCpCmRny3iVkvdzRHy3eY";
+function sumUrl() { const u = settings().sumUrl; return !u || /2eDDmyiEeoM7bumQCWbb7m/.test(u) ? DEFAULT_SUM_URL : u; }
 async function sendToClaude(text, title, btn) {
   const mobile = /Android|iPhone|iPad/i.test(navigator.userAgent);
   if (mobile && navigator.share) {
@@ -733,7 +733,7 @@ function sendPack(list, wrap, btn) {
   // 클립보드 복사와 새 창 열기를 같은 탭 동작 안에서 처리 (브라우저 차단 방지)
   const p = navigator.clipboard ? navigator.clipboard.writeText(text) : Promise.reject();
   window.open(url, "_blank", "noopener");
-  p.then(() => { if (btn) btn.textContent = `${count}건 복사됨`; msg(`미팅 ${count}건 기록을 복사했습니다. 열린 정리 페이지에 붙여넣고 '정리 시작' → 끝나면 '앱으로 가져갈 결과 복사' → 이 앱의 '정리 결과 가져오기'.`, true); })
+  p.then(() => { if (btn) btn.textContent = `${count}건 복사됨`; PEND.at = Date.now(); msg(`미팅 ${count}건 기록을 복사했습니다. 열린 Claude 미팅노트에서 ① '복사한 기록 불러오기' → 요약이 끝나면 ② '예전 앱으로 결과 복사' → 이 앱으로 돌아와 ③ '정리 결과 가져오기'.`, true); })
    .catch(() => { msg("자동 복사가 막혀 있습니다. 아래 상자의 내용을 길게 눌러 복사하세요."); hint.hidden = false; hint.textContent = text; })
    .finally(() => { if (btn) setTimeout(() => btn.textContent = label, 2500); });
 }
@@ -1118,3 +1118,10 @@ $("moveBtn").onclick = async e => {
   catch (err) { msg("자동 복사가 막혀 있습니다. 일정 관리 → 백업 파일 저장으로 옮겨주세요."); return; }
   window.open("https://claude.ai/artifact/CXCpCmRny3iVkvdzRHy3eY", "_blank", "noopener");
 };
+
+/* ---------- Claude 미팅노트에서 요약 결과 자동으로 받아오기 ---------- */
+const PEND = { at: 0 };
+document.addEventListener("visibilitychange", async () => {
+  if (document.visibilityState !== "visible" || !PEND.at || Date.now() - PEND.at > 60 * 60000) return;
+  try { const t = await navigator.clipboard.readText(); if (/NDRSUM:/.test(t || "")) { PEND.at = 0; importSums(t); } } catch (e) { }
+});
