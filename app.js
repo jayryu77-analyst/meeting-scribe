@@ -486,7 +486,7 @@ function engine() {
   if (m === "api") return st.key ? "api" : "phone";
   if (m === "chrome") return NANO.ok ? "chrome" : "phone";
   if (m === "phone" || m === "claude") return m;
-  return st.key ? "api" : NANO.ok ? "chrome" : "claude";   // 키·크롬 AI가 없으면 Claude 미팅노트(새 버전)로 요약
+  return st.key ? "api" : NANO.ok ? "chrome" : "phone";   // Claude 없이도 쓰도록: 키 → 크롬 AI → 휴대폰 기능
 }
 const ENG_NAME = { api: "Claude API", chrome: "크롬 내장 AI", phone: "휴대폰 요약 기능", claude: "Claude 정리 페이지" };
 const IS_IOS = /iPhone|iPad|iPod/i.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
@@ -706,8 +706,8 @@ $("importBackup").onchange = async e => {
 
 
 /* ---------- API 없이: Claude 앱으로 보내기 · 정리 페이지 ---------- */
-const DEFAULT_SUM_URL = "https://claude.ai/artifact/CXCpCmRny3iVkvdzRHy3eY";
-function sumUrl() { const u = settings().sumUrl; return !u || /2eDDmyiEeoM7bumQCWbb7m/.test(u) ? DEFAULT_SUM_URL : u; }
+const DEFAULT_SUM_URL = "";   // Claude 미팅노트 주소는 각자 설정에서 넣음
+function sumUrl() { const u = settings().sumUrl || ""; return /2eDDmyiEeoM7bumQCWbb7m/.test(u) ? "https://claude.ai/artifact/CXCpCmRny3iVkvdzRHy3eY" : u || DEFAULT_SUM_URL; }
 async function sendToClaude(text, title, btn) {
   const mobile = /Android|iPhone|iPad/i.test(navigator.userAgent);
   if (mobile && navigator.share) {
@@ -730,6 +730,7 @@ function sendPack(list, wrap, btn) {
   const hint = $("sendHint");
   if (!count) { msg("보낼 녹취나 메모가 없습니다."); return; }
   const url = sumUrl(), label = btn ? btn.textContent : "";
+  if (!url) { msg("설정 → Claude 미팅노트 연동에 본인 Claude 미팅노트 주소를 넣어주세요. Claude를 쓰지 않으면 요약 방식을 '자동'으로 두세요."); return; }
   // 클립보드 복사와 새 창 열기를 같은 탭 동작 안에서 처리 (브라우저 차단 방지)
   const p = navigator.clipboard ? navigator.clipboard.writeText(text) : Promise.reject();
   window.open(url, "_blank", "noopener");
@@ -1112,11 +1113,12 @@ setTimeout(maybeAuto, 1500);
 /* ---------- 새 Claude 버전으로 기록 옮기기 ---------- */
 $("moveBtn").onclick = async e => {
   saveNow();
+  if (!sumUrl()) { msg("먼저 아래 'Claude 미팅노트 주소'를 넣고 저장해 주세요."); return; }
   const text = "NDRBACKUP:" + JSON.stringify({ app: "ndr-note", v: 1, exportedAt: new Date().toISOString(), data: S });
   const btn = e.currentTarget, n = S.schedules.length;
   try { await navigator.clipboard.writeText(text); btn.textContent = `일정 ${n}개 복사됨 · 새 버전에 붙여넣으세요`; }
   catch (err) { msg("자동 복사가 막혀 있습니다. 일정 관리 → 백업 파일 저장으로 옮겨주세요."); return; }
-  window.open("https://claude.ai/artifact/CXCpCmRny3iVkvdzRHy3eY", "_blank", "noopener");
+  const u = sumUrl(); if (u) window.open(u, "_blank", "noopener"); else msg("기록을 복사했습니다. Claude 미팅노트 주소를 설정에 넣으면 바로 열립니다.", true);
 };
 
 /* ---------- Claude 미팅노트에서 요약 결과 자동으로 받아오기 ---------- */

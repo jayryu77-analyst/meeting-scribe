@@ -9,7 +9,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="미팅노트">
 <link rel="apple-touch-icon" href="icon-192.png">
-<link rel="stylesheet" href="style.css?v=28">
+<link rel="stylesheet" href="style.css?v=29">
 </head>
 <body>
 <div class="wrap">
@@ -23,9 +23,6 @@
     </div>
   </header>
 
-  <div class="warnbox newver"><a href="https://claude.ai/artifact/CXCpCmRny3iVkvdzRHy3eY" target="_blank" rel="noopener"><b>새 버전으로 이동 →</b></a> 버튼 하나로 바로 요약·랩업되는 Claude 버전 미팅노트입니다.
-    <div class="row" style="margin-top:6px"><button class="b pri" id="moveBtn" type="button">내 기록 복사하고 새 버전 열기</button></div>
-    <span class="st">새 버전 첫 화면의 붙여넣기 칸에 붙여넣고 '읽어오기'를 누르면 일정·메모·녹취·요약이 그대로 옮겨집니다.</span></div>
   <div class="warnbox" id="msg" hidden></div>
 
   <!-- 일정 만들기 -->
@@ -128,16 +125,20 @@
     <div class="desk">
       <h3>요약 방식</h3>
       <label class="f">AI 요약·랩업을 누르면<select id="aiModeIn">
-        <option value="auto">자동 (API 키 → 크롬 내장 AI → Claude 미팅노트 순)</option>
+        <option value="auto">자동 (API 키 → 크롬 내장 AI → 휴대폰 요약 기능 순)</option>
         <option value="phone">휴대폰 요약 기능 (갤럭시 AI · Apple Intelligence)</option>
         <option value="chrome">크롬 내장 AI (PC 전용 · 실험적)</option>
-        <option value="claude">Claude 미팅노트로 요약 (내 Claude 계정 · 무료)</option>
+        <option value="claude">Claude 미팅노트로 요약 (Claude 사용자 · 주소 필요)</option>
         <option value="api">Claude API 키 (앱 안에서 바로 · 유료)</option>
       </select></label>
       <p class="hint" id="aiSt"></p>
       <p class="hint">휴대폰 방식: 갤럭시는 삼성 녹음 앱에서 녹음 → 텍스트 변환 → 요약 → 공유 → 미팅노트를 고르면 요약 칸에 바로 들어갑니다. 아이폰은 요약 칸의 글을 선택하고 '글쓰기 도구 → 요약'을 누릅니다. 어느 방식이든 녹음·요약은 휴대폰 안에서 처리되고 외부 AI로 보내지 않습니다(Claude 방식 제외).</p>
     </div>
-    <label class="f">정리 페이지 주소 (Claude 계정으로 정리)<input type="text" id="sumUrlIn" autocomplete="off"></label>
+    <details class="desk"><summary>Claude 미팅노트 연동 (선택 · Claude 사용자만)</summary>
+      <p class="hint">Claude를 쓰는 분은 아래 주소에 본인 Claude 미팅노트 주소를 넣고 요약 방식을 'Claude 미팅노트'로 고르면, 요약을 Claude가 대신 해서 돌려줍니다. 기록 전체를 Claude 미팅노트로 옮길 수도 있습니다.</p>
+      <div class="row"><button class="b" id="moveBtn" type="button">내 기록 복사하고 Claude 미팅노트 열기</button></div>
+    </details>
+    <label class="f">Claude 미팅노트 주소 (선택)<input type="text" id="sumUrlIn" autocomplete="off"></label>
     <p class="hint">API 키 없이 쓰는 방법입니다. "정리 페이지로 보내기"를 누르면 기록이 복사되고 이 주소가 열립니다. 각자 자기 Claude 계정으로 정리되며, 결과도 각자 계정에만 저장됩니다.</p>
     <label class="f">Claude API 키 (선택 · 넣으면 앱 안에서 바로 정리)<input type="password" id="keyIn" autocomplete="off" placeholder="sk-ant-..."></label>
     <label class="f">모델<input type="text" id="modelIn" placeholder="claude-haiku-5-5"></label>
@@ -145,7 +146,7 @@
     <div class="row"><button class="b pri" id="saveSet" type="button">저장</button><button class="b" id="closeSet" type="button">닫기</button></div>
   </section>
 
-  <footer class="foot"><span><b id="verLabel"></b> 모든 일정·메모·녹취는 이 기기 브라우저에만 저장됩니다. 음성 파일은 저장하지 않습니다. 기기를 바꾸거나 브라우저 데이터를 지우기 전에 백업 파일을 저장하세요.</span><span class="credit">작성자 · <b>미래에셋증권 AI리서치센터</b> 류제현</span></footer>
+  <footer class="foot"><span><b id="verLabel"></b> 모든 일정·메모·녹취는 이 기기 브라우저에만 저장됩니다. 음성 파일은 저장하지 않습니다. 기기를 바꾸거나 브라우저 데이터를 지우기 전에 백업 파일을 저장하세요.</span><span class="credit">NDR 미팅노트 기본앱 · 작성자 · <b>미래에셋증권 AI리서치센터</b> 류제현</span></footer>
 </div>
 
 <div class="recbar" id="recBar" hidden>
@@ -153,9 +154,9 @@
   <button class="b" id="recStop" type="button">정지</button>
 </div>
 
-<script src="parser.js?v=28"></script>
-<script>window.APP_VERSION="28";</script>
-<script src="app.js?v=28"></script>
+<script src="parser.js?v=29"></script>
+<script>window.APP_VERSION="29";</script>
+<script src="app.js?v=29"></script>
 <script>if("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js",{updateViaCache:"none"}).catch(()=>{});</script>
 </body>
 </html>

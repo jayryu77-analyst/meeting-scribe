@@ -18,3 +18,9 @@
 | app.js | 일정 화면·받아쓰기·AI 정리·백업 |
 | parser.js | 엑셀/텍스트 일정 읽기 |
 | sw.js, manifest.webmanifest, icon-*.png | 홈 화면 앱 설정 |
+
+## 두 앱의 관계 (2026-11 정리)
+- **이 저장소 = NDR 미팅노트 기본앱.** Claude 없이 누구나 쓰는 독립 웹앱입니다(GitHub Pages).
+  요약은 API 키 → 크롬 내장 AI(PC) → 휴대폰 요약 기능(갤럭시 AI·Apple Intelligence) 순으로 씁니다.
+- **Claude 미팅노트**는 별도 프로젝트(claude.ai 페이지)로 따로 개발합니다. 이 저장소에는 그 코드가 없습니다.
+  기본앱 설정의 'Claude 미팅노트 연동(선택)'에 주소를 넣은 사람만 연결됩니다.
