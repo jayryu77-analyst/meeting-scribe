@@ -33,7 +33,16 @@
           "name": "file",
           "accept": [
             "text/plain",
-            ".txt"
+            ".txt",
+            "audio/*",
+            "video/mp4",
+            ".m4a",
+            ".mp3",
+            ".wav",
+            ".aac",
+            ".amr",
+            ".3gp",
+            ".ogg"
           ]
         }
       ]

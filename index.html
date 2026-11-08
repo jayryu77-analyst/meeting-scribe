@@ -9,7 +9,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="미팅노트">
 <link rel="apple-touch-icon" href="icon-192.png">
-<link rel="stylesheet" href="style.css?v=29">
+<link rel="stylesheet" href="style.css?v=30">
 </head>
 <body>
 <div class="wrap">
@@ -58,7 +58,7 @@
   <section class="card inbox" id="inbox" hidden>
     <h2>녹취 올리기</h2>
     <p class="hint" id="inSrc"></p>
-    <div class="row"><label class="b pri file">텍스트 파일 올리기 (여러 개)<input type="file" id="inFile" multiple accept=".txt,text/plain"></label><button class="b" id="inPaste" type="button">클립보드에서 붙여넣기</button></div>
+    <div class="row"><label class="b pri file">녹음·텍스트 파일 올리기 (여러 개)<input type="file" id="inFile" multiple accept="audio/*,video/mp4,.m4a,.mp3,.wav,.aac,.amr,.3gp,.ogg,.webm,.flac,.txt,text/plain"></label><button class="b" id="inPaste" type="button">클립보드에서 붙여넣기</button></div>
     <textarea id="inText" rows="5" placeholder="클로바노트: ⋮ 메뉴 → '전체 음성 기록 텍스트 복사' 후 여기에 붙여넣기"></textarea>
     <div class="inlist" id="inList" hidden></div>
     <label class="f" id="inMeetingBox">넣을 미팅<select id="inMeeting"></select></label>
@@ -72,7 +72,7 @@
       <div><div class="eyebrow" id="sRange"></div><h2 id="sTitle"></h2></div>
     </div>
     <div class="stats" id="stats"></div>
-    <button class="b inboxbtn" id="openInbox" type="button">녹취 올리기 (클로바노트 텍스트 파일 · 여러 개 한 번에)</button>
+    <button class="b inboxbtn" id="openInbox" type="button">녹음·녹취 올리기 (녹음 파일은 텍스트로 변환 · 여러 개 한 번에)</button>
     <nav class="tabs" id="tabs" role="tablist"></nav>
     <div class="filters" id="filters"></div>
     <section class="sum" id="sumPanel">
@@ -89,7 +89,8 @@
       <div class="toolbody">
         <div class="row">
           <button class="b" id="editText" type="button">일정 텍스트로 수정</button>
-                    <button class="b" id="exportBtn" type="button">백업 파일 저장</button>
+                    <button class="b" id="exportTxt" type="button">전체 기록 텍스트 파일로 저장</button>
+          <button class="b" id="exportBtn" type="button">백업 파일 저장</button>
           <label class="b file">백업 불러오기<input type="file" id="importBackup" accept=".json,application/json"></label>
           <button class="b del" id="delSched" type="button">이 일정 삭제</button>
         </div>
@@ -123,6 +124,15 @@
       <p class="hint">일정·메모·녹취·요약이 이 비밀번호로 암호화되어 저장소에 저장됩니다. 비밀번호를 잊으면 저장소 데이터는 복구할 수 없습니다(각 기기에 남은 데이터는 그대로). 휴대폰과 PC에 같은 세 가지를 넣으면 앱을 열 때와 수정 후 몇 초 뒤 자동으로 맞춰집니다.</p>
     </div>
     <div class="desk">
+      <h3>녹음 → 텍스트 변환 (이 기기 안에서 처리)</h3>
+      <label class="f">변환 품질<select id="sttModelIn"></select></label>
+      <label class="f">녹음 언어<select id="sttLangIn"><option value="korean">한국어</option><option value="english">영어</option><option value="">자동 감지 (섞여 있을 때)</option></select></label>
+      <label class="f">결과<select id="sttTaskIn"><option value="transcribe">말한 그대로 받아쓰기</option><option value="translate">영어로 번역해서 받아쓰기</option></select></label>
+      <p class="hint">녹음 파일을 휴대폰·PC 안에서 텍스트로 바꿉니다. 음성은 어디에도 보내거나 저장하지 않고, 텍스트만 남깁니다. 처음 한 번 변환 모델을 내려받습니다(와이파이 권장). 휴대폰은 녹음 길이와 비슷하거나 더 걸릴 수 있어 PC가 훨씬 빠릅니다. 변환 중에는 화면을 켜 두세요.</p>
+      <p class="hint" id="trSt"></p>
+      <p class="hint" id="storeSt"></p>
+    </div>
+    <div class="desk">
       <h3>요약 방식</h3>
       <label class="f">AI 요약·랩업을 누르면<select id="aiModeIn">
         <option value="auto">자동 (API 키 → 크롬 내장 AI → 휴대폰 요약 기능 순)</option>
@@ -154,9 +164,9 @@
   <button class="b" id="recStop" type="button">정지</button>
 </div>
 
-<script src="parser.js?v=29"></script>
-<script>window.APP_VERSION="29";</script>
-<script src="app.js?v=29"></script>
+<script src="parser.js?v=30"></script>
+<script>window.APP_VERSION="30";</script>
+<script src="app.js?v=30"></script>
 <script>if("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js",{updateViaCache:"none"}).catch(()=>{});</script>
 </body>
 </html>

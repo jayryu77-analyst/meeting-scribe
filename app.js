@@ -234,8 +234,14 @@ function card(s, m) {
         <h4>녹취 (자동 받아쓰기 · 다른 녹음 앱 결과를 붙여넣어도 됩니다)</h4>
         <textarea class="tr" id="tr-${m.id}" data-tr="${m.id}" rows="5" placeholder="받아쓰기를 시작하면 여기에 [분:초]와 함께 적힙니다.">${esc(n.tr)}</textarea>
         <div class="st" id="int-${m.id}"></div>
+        <div class="row"><label class="b file">녹음 파일 → 텍스트<input type="file" data-audio="${m.id}" accept="audio/*,video/mp4,.m4a,.mp3,.wav,.aac,.amr,.3gp,.ogg,.webm,.flac"></label><button class="b sm del" type="button" data-sttstop="${m.id}" hidden>변환 중지</button></div>
+        <div class="st sttst" data-stt="${m.id}"></div>
+        <h4>번역</h4>
+        <div class="row"><select data-tl="${m.id}" aria-label="번역할 언어">${[["ko", "한국어로"], ["en", "영어로"], ["ja", "일본어로"], ["zh", "중국어로"]].map(([v, t]) => `<option value="${v}" ${v === ((n.tr.match(/[가-힣]/g) || []).length > (n.tr.match(/[A-Za-z]/g) || []).length / 3 ? "en" : "ko") ? "selected" : ""}>${t}</option>`).join("")}</select><button class="b" type="button" data-trans="${m.id}">녹취 번역</button><span class="st" data-tst="${m.id}"></span></div>
+        <textarea class="tr" id="trans-${m.id}" data-transbox="${m.id}" rows="4" placeholder="'녹취 번역'을 누르면 결과가 여기에 들어갑니다. 다른 번역기 결과를 붙여넣어도 저장됩니다.">${esc(n.trans || "")}</textarea>
         <h4>메모</h4>
         <textarea class="note" id="note-${m.id}" data-note="${m.id}" rows="6" placeholder="질문, 회사 답변, 투자자 반응, 후속 확인할 것">${esc(n.note)}</textarea>
+        <div class="row"><button class="b sm" type="button" data-export="${m.id}">이 미팅 텍스트 파일로 저장</button></div>
       </div>
     </div></article>`;
 }
@@ -870,7 +876,7 @@ function openInbox(text, src, items) {
   const s = cur(); if (!s) { msg("먼저 일정을 만들어 주세요."); return; }
   inboxSrc = src || "";
   $("inbox").hidden = false; $("inText").value = text || "";
-  $("inSrc").textContent = src ? `"${src}"에서 받은 녹취입니다.` : "클로바노트에서 녹음한 뒤 텍스트 파일(여러 개 가능)을 올리거나, 녹취 텍스트를 붙여넣으세요. 녹음 시각·제목·기관 이름으로 미팅을 알아서 찾습니다.";
+  $("inSrc").textContent = src ? `"${src}"에서 받은 녹취입니다.` : "녹음 파일(m4a·mp3 등)을 올리면 이 기기 안에서 텍스트로 바꿉니다. 클로바노트 텍스트 파일이나 붙여넣기도 됩니다. 녹음 시각·파일 이름·기관 이름으로 미팅을 알아서 찾습니다.";
   $("inMeeting").innerHTML = meetingOpts(s);
   setItems(items || []);
   refreshGuess();
@@ -878,11 +884,11 @@ function openInbox(text, src, items) {
 }
 function setItems(items) {
   const s = cur();
-  IN.items = items.filter(x => x.text && x.text.trim()).map(x => { const g = guessMeeting(s, x.text, x.name); return { ...x, mid: g.m.id, why: g.why, sure: g.sure }; });
+  IN.items = items.filter(x => (x.text && x.text.trim()) || x.audio).map(x => { const g = guessMeeting(s, x.audio ? fileStamp(x.file) : x.text, x.name); return { ...x, mid: g.m.id, why: g.why, sure: g.sure }; });
   const many = IN.items.length > 0;
   $("inText").hidden = many; $("inMeetingBox").hidden = many; $("inGuess").hidden = many;
   $("inList").hidden = !many;
-  $("inList").innerHTML = IN.items.map((x, i) => `<div class="initem"><div class="inname"><b>${esc(x.name || "녹취 " + (i + 1))}</b> <span class="st">${x.text.length.toLocaleString()}자 · ${esc(x.why)}${x.sure ? "" : " ⚠"}</span></div>
+  $("inList").innerHTML = IN.items.map((x, i) => `<div class="initem"><div class="inname"><b>${esc(x.name || "녹취 " + (i + 1))}</b> <span class="st">${x.audio ? "녹음 파일 · 넣으면 텍스트로 변환" : x.text.length.toLocaleString() + "자"} · ${esc(x.why)}${x.sure ? "" : " ⚠"}</span></div>
     <select data-item="${i}" aria-label="넣을 미팅">${meetingOpts(s)}</select></div>`).join("");
   $("inList").querySelectorAll("[data-item]").forEach(sel => { sel.value = IN.items[+sel.dataset.item].mid; sel.onchange = () => IN.items[+sel.dataset.item].mid = sel.value; });
   $("inAddAI").textContent = many ? `${IN.items.length}건 넣고 요약` : "넣고 요약";
@@ -904,17 +910,17 @@ $("inPaste").onclick = async () => {
   catch (e) { msg("클립보드를 읽을 수 없습니다. 칸을 길게 눌러 '붙여넣기' 하세요."); $("inText").focus(); }
 };
 async function readTextFile(f) {
-  if (/\.(m4a|mp3|wav|aac|amr|ogg|3gp|mp4|webm)$/i.test(f.name) || /^audio|^video/.test(f.type)) return { name: f.name, text: "", bad: "음성 파일" };
+  if (isAudio(f)) return { name: f.name, text: "", file: f, audio: true };
   if (/\.docx$/i.test(f.name)) return { name: f.name, text: "", bad: "워드 파일" };
   return { name: f.name.replace(/\.(txt|text)$/i, ""), text: (await f.text()).trim() };
 }
 $("inFile").onchange = async e => {
   const fs = [...e.target.files]; e.target.value = ""; if (!fs.length) return;
   const got = await Promise.all(fs.map(readTextFile));
-  const bad = got.filter(x => x.bad), ok = got.filter(x => !x.bad && x.text);
+  const bad = got.filter(x => x.bad), ok = got.filter(x => !x.bad && (x.text || x.audio));
   if (bad.length) msg(`${bad.map(x => x.name).join(", ")}: ${bad[0].bad}은 읽을 수 없습니다. 클로바노트에서 '음성 기록 다운로드 → 텍스트(.txt)'로 받아 올려주세요.`);
   if (!ok.length) return;
-  if (ok.length === 1 && !IN.items.length) { inboxSrc = ok[0].name; $("inText").value = ok[0].text; refreshGuess(); }
+  if (ok.length === 1 && !IN.items.length && !ok[0].audio) { inboxSrc = ok[0].name; $("inText").value = ok[0].text; refreshGuess(); }
   else setItems([...IN.items, ...ok]);
 };
 $("inField").onchange = refreshGuess;
@@ -938,9 +944,11 @@ function inboxAdd(withAI, btn) {
   const s = cur();
   if (!IN.items.length && /^\s*NDRSUM:/.test($("inText").value)) { importSums($("inText").value); $("inbox").hidden = true; return; }
   let jobs;
-  if (IN.items.length) jobs = IN.items.map(x => ({ mid: x.mid, text: x.text, src: x.name }));
+  if (IN.items.length) jobs = IN.items.map(x => ({ mid: x.mid, text: x.text, src: x.name, file: x.file }));
   else { const text = $("inText").value.trim(); if (!text) { msg("넣을 녹취가 없습니다."); return; } jobs = [{ mid: $("inMeeting").value, text, src: inboxSrc }]; }
   let nSum = 0;
+  const audioJobs = jobs.filter(j => j.file); jobs = jobs.filter(j => !j.file);
+  if (audioJobs.length) { $("inbox").hidden = true; setItems([]); runAudioJobs(s, audioJobs, withAI, btn); if (!jobs.length) return; }
   jobs.forEach(j => { if (fieldFor(j.text) === "sum") { putSummary(s, j.mid, j.text, j.src); nSum++; } else putTranscript(s, j.mid, j.text, j.src); });
   if (nSum === jobs.length) withAI = false;   // 이미 요약된 글이면 다시 요약하지 않음
   saveNow();
@@ -975,8 +983,13 @@ async function checkShared() {
   try {
     const c = await caches.open("ndr-share"); const r = await c.match("shared"); if (!r) return;
     const d = await r.json(); await c.delete("shared");
-    const items = (d.items || []).filter(x => x.text && x.text.trim());
+    const items = [];
+    for (const x of d.items || []) {
+      if (x.audioKey) { const a = await c.match(x.audioKey); await c.delete(x.audioKey); if (a) items.push({ name: x.name, audio: true, file: new File([await a.blob()], x.name, { type: x.type, lastModified: x.lastModified }) }); }
+      else if (x.text && x.text.trim()) items.push(x);
+    }
     if (/^\s*NDRSUM:/.test(d.text || "")) { importSums(d.text); return; }
+    if (items.some(x => x.audio)) { openInbox("", d.title || "공유", items); return; }
     if (items.length > 1) openInbox("", d.title || "공유", items);
     else if (d.text || items.length) openInbox(d.text || items[0].text, d.title || items[0]?.name || "공유");
   } catch (e) { msg("공유받은 내용을 읽지 못했습니다. 복사해서 '녹취 넣기'로 붙여넣어 주세요."); }
@@ -1127,3 +1140,178 @@ document.addEventListener("visibilitychange", async () => {
   if (document.visibilityState !== "visible" || !PEND.at || Date.now() - PEND.at > 60 * 60000) return;
   try { const t = await navigator.clipboard.readText(); if (/NDRSUM:/.test(t || "")) { PEND.at = 0; importSums(t); } } catch (e) { }
 });
+
+/* ---------- 녹음 파일 → 텍스트 (Whisper · 이 기기 안에서 변환, 음성은 저장하지 않음) ---------- */
+const STT_MODELS = {
+  tiny: { id: "onnx-community/whisper-tiny", name: "빠름 (약 40MB · 정확도 낮음)" },
+  base: { id: "onnx-community/whisper-base", name: "보통 (약 80MB · 휴대폰 추천)" },
+  small: { id: "onnx-community/whisper-small", name: "정확 (약 250MB · PC 추천)" },
+};
+const IS_MOBILE = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+const sttCfg = () => { const st = settings(); return { model: STT_MODELS[st.sttModel] ? st.sttModel : (IS_MOBILE ? "base" : "small"), lang: st.sttLang ?? "korean", task: st.sttTask || "transcribe" }; };
+const isAudio = f => /^(audio|video)\//.test(f.type) || /\.(m4a|mp3|wav|aac|amr|ogg|oga|3gp|mp4|webm|flac|opus)$/i.test(f.name);
+const fileStamp = f => { const d = new Date(f.lastModified || Date.now()); return `${d.getFullYear()}.${pad(d.getMonth() + 1)}.${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`; };
+const mmss = t => { t = Math.max(0, Math.round(t)); const h = Math.floor(t / 3600), m = Math.floor(t % 3600 / 60), s = t % 60; return (h ? h + ":" + pad(m) : pad(m)) + ":" + pad(s); };
+const STT = { w: null, n: 0, wait: {}, busy: null, stop: false, onDl: null, device: "" };
+function sttWorker() {
+  if (STT.w) return STT.w;
+  STT.w = new Worker("stt-worker.js?v=" + (window.APP_VERSION || ""), { type: "module" });
+  STT.w.onmessage = e => {
+    const d = e.data;
+    if (d.type === "dl") { STT.onDl && STT.onDl(d); return; }
+    if (d.type === "ready") { STT.device = d.device; return; }
+    const w = STT.wait[d.id]; if (!w) return; delete STT.wait[d.id];
+    d.type === "error" ? w.no(new Error(d.message)) : w.ok(d);
+  };
+  STT.w.onerror = e => { Object.values(STT.wait).forEach(w => w.no(new Error("변환 도구를 불러오지 못했습니다 (인터넷 연결 확인)"))); STT.wait = {}; STT.w = null; };
+  return STT.w;
+}
+function sttRun(audio, cfg) {
+  return new Promise((ok, no) => { const id = ++STT.n; STT.wait[id] = { ok, no }; sttWorker().postMessage({ type: "run", id, audio, model: STT_MODELS[cfg.model].id, lang: cfg.lang || null, task: cfg.task }, [audio.buffer]); });
+}
+// 음성 파일을 16kHz 한 채널로 풀기
+async function decodeAudio(file) {
+  const AC = window.AudioContext || window.webkitAudioContext;
+  const ctx = new AC({ sampleRate: 16000 });
+  try {
+    const ab = await ctx.decodeAudioData(await file.arrayBuffer());
+    let d = ab.getChannelData(0);
+    if (ab.numberOfChannels > 1) { const r = ab.getChannelData(1), mix = new Float32Array(d.length); for (let i = 0; i < d.length; i++) mix[i] = (d[i] + r[i]) / 2; d = mix; }
+    return d;
+  } catch (e) { throw new Error("이 녹음 파일 형식을 읽지 못했습니다 (m4a·mp3·wav 권장)"); }
+  finally { try { ctx.close(); } catch (e) { } }
+}
+// 5분 단위로 나누되, 말이 끊긴 조용한 곳에서 자름
+function splitPoints(d, sr) {
+  const W = 300 * sr, pts = [0];
+  let at = 0;
+  while (d.length - at > W + 30 * sr) {
+    let best = at + W, low = Infinity; const hop = sr / 10;
+    for (let i = at + W - 15 * sr; i < at + W; i += hop) { let e = 0; for (let j = i; j < i + hop; j++) e += d[j] * d[j]; if (e < low) { low = e; best = i; } }
+    pts.push(best); at = best;
+  }
+  pts.push(d.length); return pts;
+}
+function sttUI(mid) {
+  return { st: t => { const el = document.querySelector(`[data-stt="${mid}"]`); if (el) el.textContent = t; }, stop: v => { const b = document.querySelector(`[data-sttstop="${mid}"]`); if (b) b.hidden = !v; } };
+}
+async function transcribeFile(s, mid, file) {
+  if (STT.busy) { msg("다른 녹음을 변환하는 중입니다. 끝난 뒤 다시 해주세요."); return false; }
+  const m = s.meetings.find(x => x.id === mid), cfg = sttCfg(), ui2 = sttUI(mid);
+  STT.busy = mid; STT.stop = false; ui2.stop(true);
+  let lock = null; try { lock = await navigator.wakeLock?.request("screen"); } catch (e) { }
+  const t0 = Date.now();
+  try {
+    ui2.st("녹음 파일 읽는 중…");
+    const d = await decodeAudio(file), sr = 16000, dur = d.length / sr, pts = splitPoints(d, sr);
+    const n = note(s.id, mid);
+    n.tr = (n.tr.trim() ? n.tr.replace(/\s+$/, "") + "\n\n" : "") + `── 녹음 파일 변환 · ${file.name} (${mmss(dur)}, ${hhmm()} 시작) ──\n`;
+    n.at = Date.now(); saveNow(); paintTr(s, mid);
+    STT.onDl = p => ui2.st(`받아쓰기 모델 내려받는 중 (처음 한 번만) ${Math.round(p.loaded / 1048576)} / ${Math.round(p.total / 1048576)}MB`);
+    for (let k = 0; k < pts.length - 1; k++) {
+      if (STT.stop) break;
+      const a = pts[k], b = pts[k + 1], done = a / sr;
+      const eta = k ? Math.round((Date.now() - t0) / done * (dur - done) / 60000) : null;
+      ui2.st(`텍스트로 바꾸는 중 ${Math.round(done / dur * 100)}% (${mmss(done)} / ${mmss(dur)})` + (eta != null ? ` · 약 ${eta}분 남음` : "") + " · 화면을 켜 두세요");
+      const r = await sttRun(d.slice(a, b), cfg);
+      const lines = (r.chunks.length ? r.chunks : [{ timestamp: [0], text: r.text }])
+        .map(c => ({ t: done + ((c.timestamp && c.timestamp[0]) || 0), x: String(c.text || "").trim() })).filter(c => c.x);
+      if (lines.length) { n.tr += lines.map(c => `[${mmss(c.t)}] ${c.x}`).join("\n") + "\n"; n.at = Date.now(); saveNow(); paintTr(s, mid); }
+    }
+    const took = Math.round((Date.now() - t0) / 60000);
+    ui2.st(STT.stop ? "변환을 중지했습니다. 여기까지 바꾼 내용은 저장되었습니다." : `변환 완료 (${mmss(dur)} 녹음 · ${took || 1}분 걸림${STT.device ? " · " + (STT.device === "webgpu" ? "그래픽 가속" : "일반 모드") : ""}). 음성 파일은 저장하지 않았습니다.`);
+    syncBadges();
+    return !STT.stop;
+  } catch (e) { ui2.st("변환하지 못했습니다: " + e.message); return false; }
+  finally { STT.busy = null; STT.onDl = null; ui2.stop(false); try { lock && lock.release(); } catch (e) { } }
+}
+function paintTr(s, mid) { const ta = $("tr-" + mid); if (ta && document.activeElement !== ta) { ta.value = note(s.id, mid).tr; ta.scrollTop = ta.scrollHeight; } }
+async function runAudioJobs(s, jobs, withAI, btn) {
+  const mids = [...new Set(jobs.map(j => j.mid))], first = s.meetings.find(m => m.id === mids[0]);
+  ui.day = first.date; ui.broker = "전체"; mids.forEach(id => ui.open.add(id)); renderSched();
+  document.querySelector(`.mtg[data-id="${mids[0]}"]`)?.scrollIntoView({ behavior: "smooth", block: "start" });
+  msg(`녹음 ${jobs.length}개를 차례로 텍스트로 바꿉니다. 이 화면을 켜 둔 채 기다려 주세요.`, true);
+  const ok = [];
+  for (const j of jobs) { if (await transcribeFile(s, j.mid, j.file)) ok.push(j.mid); if (STT.stop) break; }
+  if (ok.length) msg(`녹음 ${ok.length}개를 텍스트로 바꿔 녹취 칸에 넣었습니다.`, true);
+  if (withAI && ok.length) summarizeMeetings(s, [...new Set(ok)], btn);
+}
+
+/* ---------- 번역 (PC 크롬: 기기 안 번역 · 그 밖: 번역 앱으로 보내기) ---------- */
+const LANG_NAME = { ko: "한국어", en: "영어", ja: "일본어", zh: "중국어" };
+const guessLang = t => { const h = (t.match(/[가-힣]/g) || []).length, l = (t.match(/[A-Za-z]/g) || []).length, j = (t.match(/[ぁ-んァ-ン]/g) || []).length, c = (t.match(/[一-龥]/g) || []).length; return j > h && j > l / 3 ? "ja" : c > h && c > l / 3 ? "zh" : h > l / 3 ? "ko" : "en"; };
+const cleanTr = t => String(t || "").replace(/^── .*──\s*$/gm, "").replace(/^\[\d{1,2}:\d{2}(?::\d{2})?\]\s*/gm, "").replace(/\n{3,}/g, "\n\n").trim();
+async function translateText(text, target, prog) {
+  const src = guessLang(text);
+  if (src === target) throw new Error(`이미 ${LANG_NAME[target]}입니다`);
+  if (!("Translator" in self)) { const e = new Error("no-api"); e.fallback = true; throw e; }
+  const av = await Translator.availability({ sourceLanguage: src, targetLanguage: target });
+  if (av === "unavailable") { const e = new Error("no-pair"); e.fallback = true; throw e; }
+  const tr = await Translator.create({ sourceLanguage: src, targetLanguage: target, monitor(m) { m.addEventListener("downloadprogress", e => prog(`번역 모델 내려받는 중 ${Math.round(e.loaded * 100)}%`)); } });
+  const paras = text.split(/\n+/).filter(Boolean), out = [];
+  let buf = "";
+  const flush = async () => { if (buf) { out.push(await tr.translate(buf)); buf = ""; } };
+  for (let i = 0; i < paras.length; i++) { if ((buf + paras[i]).length > 1500) await flush(); buf += (buf ? "\n" : "") + paras[i]; if (i % 5 === 0) prog(`번역 중 ${Math.round(i / paras.length * 100)}%`); }
+  await flush(); try { tr.destroy(); } catch (e) { }
+  return out.join("\n");
+}
+async function translateMeeting(s, mid, btn) {
+  const n = note(s.id, mid), text = cleanTr(n.tr) || n.note.trim();
+  const target = document.querySelector(`[data-tl="${mid}"]`)?.value || "ko";
+  const st = t => { const el = document.querySelector(`[data-tst="${mid}"]`); if (el) el.textContent = t; };
+  if (!text) { st("번역할 녹취가 없습니다."); return; }
+  btn.disabled = true; st("번역 중…");
+  try {
+    n.trans = await translateText(text, target, st); n.at = Date.now(); saveNow();
+    const ta = $("trans-" + mid); if (ta) ta.value = n.trans;
+    st(`${LANG_NAME[target]}로 번역했습니다 (이 기기 안에서 처리).`);
+  } catch (e) {
+    if (!e.fallback) { st("번역하지 못했습니다: " + e.message); return; }
+    // 기기 안 번역이 없으면: 휴대폰은 공유창(Google 번역·파파고), PC는 복사 후 Google 번역 열기
+    const head = text.slice(0, 4800);
+    if (IS_MOBILE && navigator.share) { try { await navigator.share({ text: head }); st("번역 앱(Google 번역·파파고)에서 번역한 뒤 결과를 아래 번역 칸에 붙여넣으세요." + (text.length > 4800 ? " (길어서 앞부분만 보냈습니다)" : "")); } catch (err) { st("취소했습니다."); } }
+    else { try { await navigator.clipboard.writeText(text); } catch (err) { } window.open(`https://translate.google.com/?sl=auto&tl=${target === "zh" ? "zh-CN" : target}&op=translate`, "_blank", "noopener"); st("녹취를 복사했습니다. 열린 Google 번역에 붙여넣고, 결과를 아래 번역 칸에 붙여넣으세요."); }
+  } finally { btn.disabled = false; }
+}
+
+/* ---------- 텍스트 파일로 저장 ---------- */
+function meetingText(s, m) {
+  const n = note(s.id, m.id), sec = (h, t) => (t || "").trim() ? `\n[${h}]\n${t.trim()}\n` : "";
+  return `${s.title}\n${md(m.date)}(${dow(m.date)}) ${m.start}~${m.end} ${m.org}${m.contact ? " · " + m.contact : ""}\n` +
+    sec("요약", n.sum) + sec("메모", n.note) + sec("번역", n.trans) + sec("녹취", n.tr);
+}
+async function saveTextFile(name, text) {
+  const file = new File([text], name, { type: "text/plain" });
+  if (IS_MOBILE && navigator.canShare && navigator.canShare({ files: [file] })) { try { await navigator.share({ files: [file], title: name }); return; } catch (e) { if (e.name === "AbortError") return; } }
+  const a = document.createElement("a"); a.href = URL.createObjectURL(file); a.download = name; document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
+}
+const safeName = t => String(t).replace(/[\\/:*?"<>|]/g, "").replace(/\s+/g, "_").slice(0, 60);
+
+/* ---------- 미팅 카드 버튼 (녹음 변환 · 번역 · 저장) ---------- */
+$("timeline").addEventListener("change", e => {
+  const inp = e.target.closest("[data-audio]"); if (!inp) return;
+  const f = inp.files[0]; inp.value = ""; if (!f) return;
+  if (!isAudio(f)) { msg("녹음 파일(m4a·mp3·wav 등)을 골라주세요."); return; }
+  transcribeFile(cur(), inp.dataset.audio, f);
+});
+$("timeline").addEventListener("click", e => {
+  const s = cur(); if (!s) return;
+  const t = e.target.closest("[data-trans],[data-export],[data-sttstop]"); if (!t) return;
+  if (t.dataset.sttstop) { STT.stop = true; t.textContent = "중지하는 중…"; return; }
+  if (t.dataset.trans) { translateMeeting(s, t.dataset.trans, t); return; }
+  if (t.dataset.export) { const m = s.meetings.find(x => x.id === t.dataset.export); saveTextFile(`${m.date.replace(/-/g, "").slice(2)}_${m.start.replace(":", "")}_${safeName(m.org)}.txt`, meetingText(s, m)); }
+});
+$("timeline").addEventListener("input", e => { const t = e.target.closest("[data-transbox]"); if (!t) return; const n = note(cur().id, t.dataset.transbox); n.trans = t.value; n.at = Date.now(); saveSoon(); });
+$("exportTxt").onclick = () => { const s = cur(); if (!s) return; saveTextFile(`${safeName(s.title)}_전체기록.txt`, s.meetings.map(m => meetingText(s, m)).join("\n" + "=".repeat(40) + "\n\n")); };
+
+/* ---------- 설정: 받아쓰기 ---------- */
+function paintSttSet() {
+  const c = sttCfg();
+  $("sttModelIn").innerHTML = Object.entries(STT_MODELS).map(([k, v]) => `<option value="${k}">${v.name}</option>`).join(""); $("sttModelIn").value = c.model;
+  $("sttLangIn").value = c.lang; $("sttTaskIn").value = c.task;
+  $("trSt").textContent = ("Translator" in self) ? "이 브라우저는 기기 안 번역을 지원합니다 (인터넷으로 보내지 않음)." : "이 브라우저는 기기 안 번역이 없어, 번역 버튼을 누르면 번역 앱(Google 번역·파파고)으로 보냅니다.";
+  navigator.storage?.estimate?.().then(q => { $("storeSt").textContent = `이 기기 저장 사용량 약 ${Math.round((JSON.stringify(S).length * 2) / 1024)}KB` + (q && q.quota ? ` (브라우저 여유 ${Math.round((q.quota - q.usage) / 1048576)}MB, 받아쓰기 모델 포함)` : ""); }).catch(() => { });
+}
+$("setBtn").addEventListener("click", paintSttSet);
+$("saveSet").addEventListener("click", () => { try { const st = settings(); localStorage.setItem(SET_KEY, JSON.stringify({ ...st, sttModel: $("sttModelIn").value, sttLang: $("sttLangIn").value, sttTask: $("sttTaskIn").value })); } catch (e) { } }, true);
+try { navigator.storage?.persist?.(); } catch (e) { }

@@ -161,3 +161,4 @@ body{-webkit-font-smoothing:antialiased}
 .newver{display:block;text-decoration:none;color:var(--accent);background:var(--soft);font-weight:500}
 .newver b{font-weight:700}
 .newver a{color:var(--accent);text-decoration:none}
+.sttst{color:var(--accent);font-weight:500}
