@@ -226,7 +226,9 @@ function card(s, m) {
       ${m.brokers.length ? `<div class="bks">${m.brokers.map(b => `<span class="bk">${esc(b)}</span>`).join("")}</div>` : ""}
       <div class="notebar"><button class="b" type="button" data-toggle="${m.id}" aria-expanded="${open}">기록</button><span class="nb" data-badge="${m.id}"></span></div>
       <div class="panel" data-panel="${m.id}" ${open ? "" : "hidden"}>
-        <div class="row"><button class="b rec" type="button" data-rec="${m.id}">받아쓰기 시작</button><button class="b sm" type="button" data-alt="${m.id}"></button>${DESKTOP ? `<label class="sys"><input type="checkbox" data-sys="${m.id}"> 컴퓨터 소리 포함 (줌·팀즈)</label>` : ""}</div>
+        <div class="row"><button class="b rec" type="button" data-arec="${m.id}">● 녹음 시작</button><span class="st">녹음 파일로 저장 → 끝나면 텍스트로 변환</span></div>
+        <div class="recs" data-recs="${m.id}"></div>
+        <div class="row"><button class="b" type="button" data-rec="${m.id}">받아쓰기 시작</button><button class="b sm" type="button" data-alt="${m.id}"></button>${DESKTOP ? `<label class="sys"><input type="checkbox" data-sys="${m.id}"> 컴퓨터 소리 포함 (줌·팀즈)</label>` : ""}</div>
         <div class="st" data-rst="${m.id}">${extStatus(n)}</div>
         <h4>요약</h4>
         <textarea class="sumbox" id="sum-${m.id}" data-sum="${m.id}" rows="5" placeholder="녹취를 올리고 'AI 요약'을 누르면 주요 내용이 여기에 들어갑니다.">${esc(n.sum || "")}</textarea>
@@ -1219,7 +1221,7 @@ async function transcribeFile(s, mid, file) {
       if (lines.length) { n.tr += lines.map(c => `[${mmss(c.t)}] ${c.x}`).join("\n") + "\n"; n.at = Date.now(); saveNow(); paintTr(s, mid); }
     }
     const took = Math.round((Date.now() - t0) / 60000);
-    ui2.st(STT.stop ? "변환을 중지했습니다. 여기까지 바꾼 내용은 저장되었습니다." : `변환 완료 (${mmss(dur)} 녹음 · ${took || 1}분 걸림${STT.device ? " · " + (STT.device === "webgpu" ? "그래픽 가속" : "일반 모드") : ""}). 음성 파일은 저장하지 않았습니다.`);
+    ui2.st(STT.stop ? "변환을 중지했습니다. 여기까지 바꾼 내용은 저장되었습니다." : `변환 완료 (${mmss(dur)} 녹음 · ${took || 1}분 걸림${STT.device ? " · " + (STT.device === "webgpu" ? "그래픽 가속" : "일반 모드") : ""}).`);
     syncBadges();
     return !STT.stop;
   } catch (e) { ui2.st("변환하지 못했습니다: " + e.message); return false; }
@@ -1308,10 +1310,101 @@ $("exportTxt").onclick = () => { const s = cur(); if (!s) return; saveTextFile(`
 function paintSttSet() {
   const c = sttCfg();
   $("sttModelIn").innerHTML = Object.entries(STT_MODELS).map(([k, v]) => `<option value="${k}">${v.name}</option>`).join(""); $("sttModelIn").value = c.model;
-  $("sttLangIn").value = c.lang; $("sttTaskIn").value = c.task;
+  $("sttLangIn").value = c.lang; $("sttTaskIn").value = c.task; $("sttDelIn").checked = settings().sttDel !== false;
   $("trSt").textContent = ("Translator" in self) ? "이 브라우저는 기기 안 번역을 지원합니다 (인터넷으로 보내지 않음)." : "이 브라우저는 기기 안 번역이 없어, 번역 버튼을 누르면 번역 앱(Google 번역·파파고)으로 보냅니다.";
   navigator.storage?.estimate?.().then(q => { $("storeSt").textContent = `이 기기 저장 사용량 약 ${Math.round((JSON.stringify(S).length * 2) / 1024)}KB` + (q && q.quota ? ` (브라우저 여유 ${Math.round((q.quota - q.usage) / 1048576)}MB, 받아쓰기 모델 포함)` : ""); }).catch(() => { });
 }
 $("setBtn").addEventListener("click", paintSttSet);
-$("saveSet").addEventListener("click", () => { try { const st = settings(); localStorage.setItem(SET_KEY, JSON.stringify({ ...st, sttModel: $("sttModelIn").value, sttLang: $("sttLangIn").value, sttTask: $("sttTaskIn").value })); } catch (e) { } }, true);
+$("saveSet").addEventListener("click", () => { try { const st = settings(); localStorage.setItem(SET_KEY, JSON.stringify({ ...st, sttModel: $("sttModelIn").value, sttLang: $("sttLangIn").value, sttTask: $("sttTaskIn").value, sttDel: $("sttDelIn").checked })); } catch (e) { } }, true);
 try { navigator.storage?.persist?.(); } catch (e) { }
+
+/* ---------- 앱 안에서 녹음 (파일로 저장 → 텍스트 변환 → 음성 삭제) ---------- */
+// 녹음은 10초마다 이 기기(IndexedDB)에 조각으로 저장해서, 브라우저가 꺼져도 그때까지는 남습니다.
+const ADB = (() => {
+  let dbp = null;
+  const open = () => dbp || (dbp = new Promise((ok, no) => {
+    const r = indexedDB.open("ndr-audio", 1);
+    r.onupgradeneeded = () => { const d = r.result; d.createObjectStore("recs", { keyPath: "rid" }); const c = d.createObjectStore("chunks", { keyPath: ["rid", "seq"] }); c.createIndex("rid", "rid"); };
+    r.onsuccess = () => ok(r.result); r.onerror = () => no(r.error);
+  }));
+  const tx = async (stores, mode, fn) => { const d = await open(); return new Promise((ok, no) => { const t = d.transaction(stores, mode); let out; Promise.resolve(fn(t)).then(v => out = v); t.oncomplete = () => ok(out); t.onerror = () => no(t.error); }); };
+  const req = r => new Promise((ok, no) => { r.onsuccess = () => ok(r.result); r.onerror = () => no(r.error); });
+  return {
+    putRec: rec => tx(["recs"], "readwrite", t => { t.objectStore("recs").put(rec); }),
+    putChunk: (rid, seq, blob) => tx(["chunks"], "readwrite", t => { t.objectStore("chunks").put({ rid, seq, blob }); }),
+    recs: () => tx(["recs"], "readonly", t => req(t.objectStore("recs").getAll())),
+    blob: async rid => { const rows = await tx(["chunks"], "readonly", t => req(t.objectStore("chunks").index("rid").getAll(rid))); const rec = (await ADB.recs()).find(r => r.rid === rid); return new Blob(rows.sort((a, b) => a.seq - b.seq).map(r => r.blob), { type: (rec && rec.mime) || "audio/webm" }); },
+    del: async rid => { const keys = await tx(["chunks"], "readonly", t => req(t.objectStore("chunks").index("rid").getAllKeys(rid))); await tx(["recs", "chunks"], "readwrite", t => { t.objectStore("recs").delete(rid); keys.forEach(k => t.objectStore("chunks").delete(k)); }); },
+  };
+})();
+const AREC = { on: false, rid: null, sid: null, mid: null, mr: null, stream: null, seq: 0, t0: 0, tick: null, ac: null, an: null, lock: null, bytes: 0 };
+const recMime = () => ["audio/webm;codecs=opus", "audio/mp4", "audio/webm", "audio/ogg;codecs=opus"].find(t => window.MediaRecorder && MediaRecorder.isTypeSupported(t)) || "";
+const extOf = mime => /mp4/.test(mime) ? "m4a" : /ogg/.test(mime) ? "ogg" : "webm";
+async function startARec(sid, mid) {
+  if (AREC.on) { msg("이미 녹음 중입니다. 먼저 '녹음 끝'을 눌러주세요."); return; }
+  if (typeof R !== "undefined" && R.on) { msg("받아쓰기를 먼저 정지해 주세요."); return; }
+  if (!window.MediaRecorder || !navigator.mediaDevices) { msg("이 브라우저는 녹음을 지원하지 않습니다. 갤럭시는 크롬, 아이폰은 사파리로 열어주세요."); return; }
+  const s = S.schedules.find(x => x.id === sid), m = s.meetings.find(x => x.id === mid), st = settings();
+  try {
+    AREC.stream = await navigator.mediaDevices.getUserMedia({ audio: { deviceId: st.micId ? { ideal: st.micId } : undefined, channelCount: 1, echoCancellation: false, noiseSuppression: false, autoGainControl: true } });
+  } catch (e) { msg("마이크를 쓸 수 없습니다. 브라우저 주소창의 자물쇠 → 마이크 허용을 확인해 주세요."); return; }
+  const mime = recMime();
+  Object.assign(AREC, { on: true, rid: "r" + Date.now().toString(36), sid, mid, seq: 0, t0: Date.now(), bytes: 0 });
+  await ADB.putRec({ rid: AREC.rid, sid, mid, name: recName(m), mime: mime || "audio/webm", startedAt: AREC.t0, endedAt: 0, dur: 0 });
+  AREC.mr = new MediaRecorder(AREC.stream, mime ? { mimeType: mime, audioBitsPerSecond: 48000 } : undefined);
+  AREC.mr.ondataavailable = e => { if (e.data && e.data.size) { AREC.bytes += e.data.size; ADB.putChunk(AREC.rid, AREC.seq++, e.data).catch(() => msg("저장 공간이 부족해 녹음 일부가 저장되지 않았습니다.")); } };
+  AREC.mr.start(10000);
+  try { AREC.lock = await navigator.wakeLock?.request("screen"); } catch (e) { }
+  try { AREC.ac = new (window.AudioContext || window.webkitAudioContext)(); AREC.an = AREC.ac.createAnalyser(); AREC.an.fftSize = 512; AREC.ac.createMediaStreamSource(AREC.stream).connect(AREC.an); } catch (e) { }
+  const buf = new Uint8Array(256);
+  $("arecBar").hidden = false; $("arecLabel").textContent = `녹음 중 · ${m.org}`;
+  AREC.tick = setInterval(() => {
+    $("arecClock").textContent = mmss((Date.now() - AREC.t0) / 1000);
+    if (AREC.an) { AREC.an.getByteTimeDomainData(buf); let pk = 0; for (const v of buf) pk = Math.max(pk, Math.abs(v - 128)); $("arecMeter").style.width = Math.min(100, pk / 128 * 160) + "%"; }
+  }, 200);
+  paintARecBtns();
+  msg("녹음을 시작했습니다. 화면을 켜 둔 채 휴대폰을 테이블 가운데에 두세요. 다른 앱으로 넘어가면 녹음이 멈출 수 있습니다.", true);
+}
+async function stopARec() {
+  if (!AREC.on) return;
+  const { rid, sid, mid, t0 } = AREC;
+  await new Promise(ok => { AREC.mr.onstop = ok; try { AREC.mr.stop(); } catch (e) { ok(); } });
+  AREC.stream.getTracks().forEach(t => t.stop()); clearInterval(AREC.tick);
+  try { AREC.ac && AREC.ac.close(); } catch (e) { } try { AREC.lock && AREC.lock.release(); } catch (e) { }
+  const recs = await ADB.recs(), rec = recs.find(r => r.rid === rid);
+  if (rec) { rec.endedAt = Date.now(); rec.dur = (rec.endedAt - t0) / 1000; rec.size = AREC.bytes; await ADB.putRec(rec); }
+  AREC.on = false; $("arecBar").hidden = true; paintARecBtns(); paintRecs();
+  msg(`녹음을 저장했습니다 (${mmss((Date.now() - t0) / 1000)}). 미팅 카드의 '텍스트로 변환'을 누르면 글로 바뀝니다` + (settings().sttDel !== false ? " (변환이 끝나면 녹음 파일은 지워집니다)." : "."), true);
+  const n = note(sid, mid); n.at = Date.now(); saveSoon();
+}
+function paintARecBtns() {
+  document.querySelectorAll("[data-arec]").forEach(b => { const me = AREC.on && AREC.mid === b.dataset.arec; b.textContent = me ? "■ 녹음 끝" : "● 녹음 시작"; b.disabled = AREC.on && !me; });
+}
+async function paintRecs() {
+  const s = cur(); if (!s) return;
+  let recs = []; try { recs = await ADB.recs(); } catch (e) { return; }
+  document.querySelectorAll("[data-recs]").forEach(box => {
+    const mine = recs.filter(r => r.sid === s.id && r.mid === box.dataset.recs && !(AREC.on && AREC.rid === r.rid)).sort((a, b) => a.startedAt - b.startedAt);
+    box.innerHTML = mine.map(r => `<div class="recitem"><span>🎙 ${new Date(r.startedAt).toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" })} 녹음 · ${mmss(r.dur || 0)}${r.size ? ` · ${(r.size / 1048576).toFixed(1)}MB` : ""}${r.endedAt ? "" : " · 중간에 끊긴 녹음(복구됨)"}</span>
+      <span class="row"><button class="b sm pri" type="button" data-rstt="${r.rid}">텍스트로 변환</button><button class="b sm" type="button" data-rsave="${r.rid}">파일 저장</button><button class="b sm del" type="button" data-rdel="${r.rid}">삭제</button></span></div>`).join("");
+  });
+  syncBadges();
+}
+async function recFile(rid) { const rec = (await ADB.recs()).find(r => r.rid === rid), blob = await ADB.blob(rid); return new File([blob], `${(rec && rec.name) || "녹음"}.${extOf(blob.type)}`.replace(/[\\/:*?"<>|]/g, ""), { type: blob.type, lastModified: rec ? rec.startedAt : Date.now() }); }
+{ const rt0 = renderTimeline; renderTimeline = function (s) { rt0(s); paintARecBtns(); paintRecs(); }; }
+$("timeline").addEventListener("click", async e => {
+  const b = e.target.closest("[data-arec],[data-rstt],[data-rsave],[data-rdel]"); if (!b) return;
+  const s = cur();
+  if (b.dataset.arec) { AREC.on && AREC.mid === b.dataset.arec ? stopARec() : startARec(s.id, b.dataset.arec); return; }
+  const rid = b.dataset.rstt || b.dataset.rsave || b.dataset.rdel, rec = (await ADB.recs()).find(r => r.rid === rid); if (!rec) return;
+  if (b.dataset.rsave) { const f = await recFile(rid); const a = document.createElement("a"); a.href = URL.createObjectURL(f); a.download = f.name; document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 2000); return; }
+  if (b.dataset.rdel) { if (b.dataset.arm !== "1") { b.dataset.arm = "1"; b.textContent = "정말 삭제"; setTimeout(() => { b.dataset.arm = ""; b.textContent = "삭제"; }, 3000); return; } await ADB.del(rid); paintRecs(); return; }
+  if (b.dataset.rstt) { b.disabled = true; const ok = await transcribeFile(s, rec.mid, await recFile(rid));
+    if (ok && settings().sttDel !== false) { await ADB.del(rid); msg("텍스트로 바꿨고, 녹음 파일은 지웠습니다.", true); }
+    else if (ok) msg("텍스트로 바꿨습니다. 녹음 파일은 남겨 두었습니다(설정에서 '변환 후 녹음 파일 지우기'를 켜면 자동으로 지웁니다).", true);
+    paintRecs(); }
+});
+$("arecStop").onclick = stopARec;
+window.addEventListener("beforeunload", e => { if (AREC.on) { e.preventDefault(); e.returnValue = ""; } });
+// 지난번에 끊긴 녹음 마무리
+ADB.recs().then(async rs => { const broken = rs.filter(r => !r.endedAt); for (const r of broken) { const b = await ADB.blob(r.rid); r.endedAt = Date.now(); r.size = b.size; r.dur = r.dur || Math.round(b.size / 6000); await ADB.putRec(r); } if (broken.length) msg("지난번에 끊긴 녹음을 복구했습니다. 해당 미팅 카드에서 확인하세요.", true); paintRecs(); }).catch(() => { });

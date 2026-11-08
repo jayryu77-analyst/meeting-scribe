@@ -162,3 +162,7 @@ body{-webkit-font-smoothing:antialiased}
 .newver b{font-weight:700}
 .newver a{color:var(--accent);text-decoration:none}
 .sttst{color:var(--accent);font-weight:500}
+.recs{display:flex;flex-direction:column;gap:6px}
+.recs:empty{display:none}
+.recitem{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:6px;border:1px solid var(--line);border-radius:8px;padding:6px 8px;font-size:13px;background:var(--soft)}
+#arecBar .b{background:var(--rec);border-color:var(--rec);color:#fff}
