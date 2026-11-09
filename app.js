@@ -1483,12 +1483,32 @@ function toWav(d, sr) {
   return new Blob([buf], { type: "audio/wav" });
 }
 // 형식 변환에 시간이 걸리면 휴대폰이 공유창을 막으므로: ① 파일 준비 → ② 한 번 더 눌러 보내기
-const PREP = {};
-async function prepFile(app, file) {
+var PREP = {};
+// MP3(16kHz·모노·32kbps)로 압축: 1시간 약 14MB (WAV는 약 115MB라 휴대폰 공유가 막힘)
+let lameP = null;
+const loadLame = () => lameP || (lameP = new Promise((ok, no) => { if (window.lamejs) return ok(); const sc = document.createElement("script"); sc.src = "https://cdn.jsdelivr.net/npm/lamejs@1.2.1/lame.min.js"; sc.onload = ok; sc.onerror = () => { lameP = null; no(new Error("MP3 변환 도구를 불러오지 못했습니다 (인터넷 확인)")); }; document.head.appendChild(sc); }));
+async function toMp3(d, sr, prog) {
+  await loadLame();
+  const enc = new lamejs.Mp3Encoder(1, sr, 32), out = [], B = 1152, pcm = new Int16Array(B);
+  for (let i = 0; i < d.length; i += B) {
+    const n = Math.min(B, d.length - i);
+    for (let j = 0; j < n; j++) { const x = Math.max(-1, Math.min(1, d[i + j])); pcm[j] = x < 0 ? x * 0x8000 : x * 0x7fff; }
+    const o = enc.encodeBuffer(n === B ? pcm : pcm.subarray(0, n)); if (o.length) out.push(new Uint8Array(o));
+    if ((i / B) % 400 === 0) { prog && prog(Math.round(i / d.length * 100)); await new Promise(r => setTimeout(r, 0)); }
+  }
+  const e = enc.flush(); if (e.length) out.push(new Uint8Array(e));
+  return new Blob(out, { type: "audio/mpeg" });
+}
+async function prepFile(app, file, prog) {
   const A = HANDOFF[app];
   if (A.ok.test(file.name)) return file;
   const d = await decodeAudio(file);
-  return new File([toWav(d, 16000)], file.name.replace(/\.[^.]+$/, "") + ".wav", { type: "audio/wav", lastModified: file.lastModified });
+  return new File([await toMp3(d, 16000, prog)], file.name.replace(/\.[^.]+$/, "") + ".mp3", { type: "audio/mpeg", lastModified: file.lastModified });
+}
+function saveAndOpen(A, f) {
+  const a = document.createElement("a"); a.href = URL.createObjectURL(f); a.download = f.name; document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 3000);
+  window.open(A.url, "_blank", "noopener");
+  msg(`녹음 파일(${f.name}, ${(f.size / 1048576).toFixed(1)}MB)을 휴대폰에 저장하고 ${A.obj} 열었습니다. 거기서 '파일 업로드(소스 추가)'로 방금 저장한 파일을 올리세요. ${A.back}.`, true);
 }
 async function handoff(app, s, mid, file, btn, rid) {
   const A = HANDOFF[app], key = rid + "|" + app, label = `${A.to}`;
@@ -1497,21 +1517,22 @@ async function handoff(app, s, mid, file, btn, rid) {
     let f = PREP[key], fresh = !!f;
     if (!f) {
       if (!A.ok.test(file.name)) btn.textContent = "보낼 파일 준비 중…";
-      f = await prepFile(app, file);
+      f = await prepFile(app, file, pc => btn.textContent = `보낼 파일 준비 중… ${pc}%`);
       if (f.size > A.max * 1048576) { msg(`${A.name}${app === "clova" ? "는" : "은"} 한 파일 ${A.max}MB까지 받습니다. 이 녹음(${Math.round(f.size / 1048576)}MB)은 '이 기기에서 변환'이나 '파일 저장' 후 직접 올려주세요.`); return; }
       if (f !== file && IS_MOBILE) { PREP[key] = f; btn.textContent = `준비됨 · 눌러서 ${A.to} 보내기`; btn.classList.add("pri"); return; }
     }
     try { localStorage.setItem("ndr-handoff", JSON.stringify({ sid: s.id, mid, app, at: Date.now() })); } catch (e) { }
     if (IS_MOBILE && navigator.canShare && navigator.canShare({ files: [f] })) {
       try { await navigator.share({ files: [f], title: f.name }); }
-      catch (e) { if (e.name === "AbortError") return; if (e.name === "NotAllowedError") { PREP[key] = f; btn.textContent = `준비됨 · 눌러서 ${A.to} 보내기`; btn.classList.add("pri"); msg("한 번 더 눌러주세요."); return; } throw e; }
+      catch (e) {
+        if (e.name === "AbortError") return;
+        // 두 번째에도 공유가 막히면(파일 크기 등) 저장 후 직접 올리는 방법으로
+        if (e.name === "NotAllowedError" && !fresh) { PREP[key] = f; btn.textContent = `준비됨 · 눌러서 ${A.to} 보내기`; btn.classList.add("pri"); msg("파일이 준비됐습니다. 버튼을 한 번 더 눌러주세요."); return; }
+        delete PREP[key]; saveAndOpen(A, f); btn.textContent = label; btn.classList.remove("pri"); return;
+      }
       delete PREP[key];
       msg(`공유창에서 ${A.obj} 고르셨다면 그 앱에서 변환됩니다(목록에 없으면 앱 설치 필요). ${A.back}. 돌아오면 이 미팅이 자동으로 선택됩니다.`, true);
-    } else {
-      const a = document.createElement("a"); a.href = URL.createObjectURL(f); a.download = f.name; document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 2000);
-      window.open(A.url, "_blank", "noopener"); delete PREP[key];
-      msg(`녹음 파일(${f.name})을 저장하고 ${A.obj} 열었습니다. 거기서 '소스 추가·파일 업로드'로 올리세요. ${A.back}.`, true);
-    }
+    } else { delete PREP[key]; saveAndOpen(A, f); }
     btn.textContent = label; btn.classList.remove("pri");
   } catch (e) { msg(`${A.to} 보내지 못했습니다: ` + e.message + " · '파일 저장' 후 그 앱에서 직접 올려도 됩니다."); btn.textContent = label; }
   finally { btn.disabled = false; }
