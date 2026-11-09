@@ -9,7 +9,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="미팅노트">
 <link rel="apple-touch-icon" href="icon-192.png">
-<link rel="stylesheet" href="style.css?v=33">
+<link rel="stylesheet" href="style.css?v=34">
 </head>
 <body>
 <div class="wrap">
@@ -125,6 +125,7 @@
     </div>
     <div class="desk">
       <h3>녹음 → 텍스트 변환 (이 기기 안에서 처리)</h3>
+      <label class="f">녹음 버튼을 누르면<select id="arecModeIn"><option value="native">휴대폰 녹음기 앱으로 녹음 (갤럭시 권장 · 음질 좋음 · 화면 꺼도 계속)</option><option value="app">이 앱 안에서 녹음 (화면을 켜 둬야 함)</option></select></label>
       <label class="f">변환 품질<select id="sttModelIn"></select></label>
       <label class="f">녹음 언어<select id="sttLangIn"><option value="korean">한국어</option><option value="english">영어</option><option value="">자동 감지 (섞여 있을 때)</option></select></label>
       <label class="sys"><input type="checkbox" id="sttDelIn" checked> 텍스트로 변환한 뒤 녹음 파일 지우기 (권장 · 끄면 '파일 저장'으로 따로 보관 가능)</label>
@@ -160,6 +161,7 @@
   <footer class="foot"><span><b id="verLabel"></b> 모든 일정·메모·녹취는 이 기기 브라우저에만 저장됩니다. 음성 파일은 저장하지 않습니다. 기기를 바꾸거나 브라우저 데이터를 지우기 전에 백업 파일을 저장하세요.</span><span class="credit">NDR 미팅노트 기본앱 · 작성자 · <b>미래에셋증권 AI리서치센터</b> 류제현</span></footer>
 </div>
 
+<input type="file" id="nativeRec" accept="audio/*" capture hidden>
 <div class="recbar" id="arecBar" hidden>
   <span class="dot"></span><span id="arecLabel"></span><span class="meter"><i id="arecMeter"></i></span><span class="clock" id="arecClock">00:00</span>
   <button class="b" id="arecStop" type="button">녹음 끝</button>
@@ -169,9 +171,9 @@
   <button class="b" id="recStop" type="button">정지</button>
 </div>
 
-<script src="parser.js?v=33"></script>
-<script>window.APP_VERSION="33";</script>
-<script src="app.js?v=33"></script>
+<script src="parser.js?v=34"></script>
+<script>window.APP_VERSION="34";</script>
+<script src="app.js?v=34"></script>
 <script>if("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js",{updateViaCache:"none"}).catch(()=>{});</script>
 </body>
 </html>

@@ -226,7 +226,7 @@ function card(s, m) {
       ${m.brokers.length ? `<div class="bks">${m.brokers.map(b => `<span class="bk">${esc(b)}</span>`).join("")}</div>` : ""}
       <div class="notebar"><button class="b" type="button" data-toggle="${m.id}" aria-expanded="${open}">기록</button><span class="nb" data-badge="${m.id}"></span></div>
       <div class="panel" data-panel="${m.id}" ${open ? "" : "hidden"}>
-        <div class="row"><button class="b rec" type="button" data-arec="${m.id}">● 녹음 시작</button><span class="st">녹음 파일로 저장 → 끝나면 텍스트로 변환</span></div>
+        <div class="row"><button class="b rec" type="button" data-arec="${m.id}">● 녹음 시작</button><span class="st" data-arecst="${m.id}"></span></div>
         <div class="recs" data-recs="${m.id}"></div>
         <div class="row"><button class="b" type="button" data-rec="${m.id}">받아쓰기 시작</button><button class="b sm" type="button" data-alt="${m.id}"></button>${DESKTOP ? `<label class="sys"><input type="checkbox" data-sys="${m.id}"> 컴퓨터 소리 포함 (줌·팀즈)</label>` : ""}</div>
         <div class="st" data-rst="${m.id}">${extStatus(n)}</div>
@@ -1328,11 +1328,12 @@ function paintSttSet() {
   const c = sttCfg();
   $("sttModelIn").innerHTML = Object.entries(STT_MODELS).map(([k, v]) => `<option value="${k}">${v.name}</option>`).join(""); $("sttModelIn").value = c.model;
   $("sttLangIn").value = c.lang; $("sttTaskIn").value = c.task; $("sttDelIn").checked = settings().sttDel !== false;
+  $("arecModeIn").value = recMode(); $("arecModeIn").disabled = !NATIVE_OK;
   $("trSt").textContent = ("Translator" in self) ? "이 브라우저는 기기 안 번역을 지원합니다 (인터넷으로 보내지 않음)." : "이 브라우저는 기기 안 번역이 없어, 번역 버튼을 누르면 번역 앱(Google 번역·파파고)으로 보냅니다.";
   navigator.storage?.estimate?.().then(q => { $("storeSt").textContent = `이 기기 저장 사용량 약 ${Math.round((JSON.stringify(S).length * 2) / 1024)}KB` + (q && q.quota ? ` (브라우저 여유 ${Math.round((q.quota - q.usage) / 1048576)}MB, 받아쓰기 모델 포함)` : ""); }).catch(() => { });
 }
 $("setBtn").addEventListener("click", paintSttSet);
-$("saveSet").addEventListener("click", () => { try { const st = settings(); localStorage.setItem(SET_KEY, JSON.stringify({ ...st, sttModel: $("sttModelIn").value, sttLang: $("sttLangIn").value, sttTask: $("sttTaskIn").value, sttDel: $("sttDelIn").checked })); } catch (e) { } }, true);
+$("saveSet").addEventListener("click", () => { try { const st = settings(); localStorage.setItem(SET_KEY, JSON.stringify({ ...st, sttModel: $("sttModelIn").value, sttLang: $("sttLangIn").value, sttTask: $("sttTaskIn").value, sttDel: $("sttDelIn").checked, arecMode: $("arecModeIn").value })); } catch (e) { } }, true);
 try { navigator.storage?.persist?.(); } catch (e) { }
 
 /* ---------- 앱 안에서 녹음 (파일로 저장 → 텍스트 변환 → 음성 삭제) ---------- */
@@ -1394,9 +1395,37 @@ async function stopARec() {
   msg(`녹음을 저장했습니다 (${mmss((Date.now() - t0) / 1000)}). 미팅 카드의 '텍스트로 변환'을 누르면 글로 바뀝니다` + (settings().sttDel !== false ? " (변환이 끝나면 녹음 파일은 지워집니다)." : "."), true);
   const n = note(sid, mid); n.at = Date.now(); saveSoon();
 }
+// 녹음 방식: 갤럭시(안드로이드)는 휴대폰 녹음기 앱이 기본 (음질이 더 좋고 화면을 꺼도 계속 녹음)
+const NATIVE_OK = /Android/i.test(navigator.userAgent);
+const recMode = () => { const v = settings().arecMode; return v === "app" || !NATIVE_OK ? "app" : "native"; };
 function paintARecBtns() {
-  document.querySelectorAll("[data-arec]").forEach(b => { const me = AREC.on && AREC.mid === b.dataset.arec; b.textContent = me ? "■ 녹음 끝" : "● 녹음 시작"; b.disabled = AREC.on && !me; });
+  const native = recMode() === "native";
+  document.querySelectorAll("[data-arec]").forEach(b => { const me = AREC.on && AREC.mid === b.dataset.arec; b.textContent = me ? "■ 녹음 끝" : native ? "● 녹음 (휴대폰 녹음기)" : "● 녹음 시작"; b.disabled = AREC.on && !me; });
+  document.querySelectorAll("[data-arecst]").forEach(e => e.textContent = native ? "녹음기에서 정지·저장하면 이 미팅에 자동으로 들어옵니다" : "녹음 파일로 저장 → 끝나면 텍스트로 변환");
 }
+// 휴대폰 녹음기에서 돌아온 파일을 이 미팅의 녹음 목록에 저장
+const NREC = { sid: null, mid: null };
+async function addRecFile(sid, mid, file) {
+  const s = S.schedules.find(x => x.id === sid), m = s && s.meetings.find(x => x.id === mid); if (!m) return;
+  const rid = "r" + Date.now().toString(36), t = Date.now();
+  let dur = 0; try { dur = await new Promise(ok => { const a = new Audio(); a.preload = "metadata"; a.onloadedmetadata = () => ok(isFinite(a.duration) ? a.duration : 0); a.onerror = () => ok(0); a.src = URL.createObjectURL(file); setTimeout(() => ok(0), 5000); }); } catch (e) { }
+  await ADB.putChunk(rid, 0, file);
+  await ADB.putRec({ rid, sid, mid, name: recName(m), mime: file.type || "audio/mp4", startedAt: t - dur * 1000, endedAt: t, dur, size: file.size });
+  ui.open.add(mid); paintRecs();
+  msg(`녹음(${mmss(dur)})을 ${m.org} 미팅에 저장했습니다. '텍스트로 변환'을 누르면 글로 바뀝니다.`, true);
+  try { localStorage.removeItem("ndr-nrec"); } catch (e) { }
+}
+function startNative(sid, mid) {
+  NREC.sid = sid; NREC.mid = mid;
+  try { localStorage.setItem("ndr-nrec", JSON.stringify({ sid, mid, at: Date.now() })); } catch (e) { }
+  const i = $("nativeRec"); i.value = ""; i.click();
+}
+$("nativeRec").onchange = e => {
+  const f = e.target.files[0]; e.target.value = ""; if (!f) return;
+  let t = NREC; if (!t.mid) { try { t = JSON.parse(localStorage.getItem("ndr-nrec") || "{}"); } catch (err) { } }
+  if (!t.mid) { openInbox("", "", [{ name: f.name, file: f, audio: true }]); return; }
+  addRecFile(t.sid, t.mid, f);
+};
 async function paintRecs() {
   const s = cur(); if (!s) return;
   let recs = []; try { recs = await ADB.recs(); } catch (e) { return; }
@@ -1412,7 +1441,7 @@ async function recFile(rid) { const rec = (await ADB.recs()).find(r => r.rid ===
 $("timeline").addEventListener("click", async e => {
   const b = e.target.closest("[data-arec],[data-rstt],[data-rsave],[data-rdel]"); if (!b) return;
   const s = cur();
-  if (b.dataset.arec) { AREC.on && AREC.mid === b.dataset.arec ? stopARec() : startARec(s.id, b.dataset.arec); return; }
+  if (b.dataset.arec) { if (AREC.on && AREC.mid === b.dataset.arec) stopARec(); else if (recMode() === "native") startNative(s.id, b.dataset.arec); else startARec(s.id, b.dataset.arec); return; }
   const rid = b.dataset.rstt || b.dataset.rsave || b.dataset.rdel, rec = (await ADB.recs()).find(r => r.rid === rid); if (!rec) return;
   if (b.dataset.rsave) { const f = await recFile(rid); const a = document.createElement("a"); a.href = URL.createObjectURL(f); a.download = f.name; document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 2000); return; }
   if (b.dataset.rdel) { if (b.dataset.arm !== "1") { b.dataset.arm = "1"; b.textContent = "정말 삭제"; setTimeout(() => { b.dataset.arm = ""; b.textContent = "삭제"; }, 3000); return; } await ADB.del(rid); paintRecs(); return; }
@@ -1425,3 +1454,12 @@ $("arecStop").onclick = stopARec;
 window.addEventListener("beforeunload", e => { if (AREC.on) { e.preventDefault(); e.returnValue = ""; } });
 // 지난번에 끊긴 녹음 마무리
 ADB.recs().then(async rs => { const broken = rs.filter(r => !r.endedAt); for (const r of broken) { const b = await ADB.blob(r.rid); r.endedAt = Date.now(); r.size = b.size; r.dur = r.dur || Math.round(b.size / 6000); await ADB.putRec(r); } if (broken.length) msg("지난번에 끊긴 녹음을 복구했습니다. 해당 미팅 카드에서 확인하세요.", true); paintRecs(); }).catch(() => { });
+// 녹음기에서 돌아왔는데 브라우저가 새로 열려 파일을 못 받은 경우 안내
+function checkNativeLost() {
+  let t = null; try { t = JSON.parse(localStorage.getItem("ndr-nrec") || "null"); } catch (e) { }
+  if (!t || Date.now() - t.at < 15000) return;
+  if (Date.now() - t.at > 6 * 3600000) { try { localStorage.removeItem("ndr-nrec"); } catch (e) { } return; }
+  setTimeout(() => { if (localStorage.getItem("ndr-nrec")) { msg("녹음기에서 녹음한 파일이 아직 들어오지 않았습니다. 녹음기에서 저장했다면, 미팅 카드의 '저장된 녹음 파일 불러와 텍스트로'에서 녹음기 폴더(Recordings → Voice Recorder)의 파일을 골라주세요."); try { localStorage.removeItem("ndr-nrec"); } catch (e) { } } }, 4000);
+}
+document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") checkNativeLost(); });
+checkNativeLost();
