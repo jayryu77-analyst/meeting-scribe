@@ -8,10 +8,12 @@ let asr = null, loaded = "", device = "wasm";
 async function hasWebGPU() {
   try { return !!(navigator.gpu && await navigator.gpu.requestAdapter()); } catch (e) { return false; }
 }
-async function load(model) {
-  if (asr && loaded === model) return;
+self.addEventListener("error", e => postMessage({ type: "fatal", message: String(e.message || e) }));
+self.addEventListener("unhandledrejection", e => postMessage({ type: "fatal", message: String((e.reason && e.reason.message) || e.reason) }));
+async function load(model, pref) {
+  if (asr && loaded === model + pref) return;
   const progress = p => { if (p.status === "progress" && p.total) postMessage({ type: "dl", file: p.file, loaded: p.loaded, total: p.total }); };
-  device = (await hasWebGPU()) ? "webgpu" : "wasm";
+  device = pref !== "wasm" && (await hasWebGPU()) ? "webgpu" : "wasm";   // 휴대폰은 그래픽 가속이 불안정해 일반 모드 사용
   try {
     asr = await pipeline("automatic-speech-recognition", model, {
       device, progress_callback: progress,
@@ -22,16 +24,16 @@ async function load(model) {
     device = "wasm";   // 그래픽 가속이 안 되면 일반 방식으로 다시
     asr = await pipeline("automatic-speech-recognition", model, { device, dtype: "q8", progress_callback: progress });
   }
-  loaded = model;
+  loaded = model + pref;
   postMessage({ type: "ready", device });
 }
 
 self.onmessage = async e => {
   const m = e.data;
   try {
-    if (m.type === "load") { await load(m.model); return; }
     if (m.type === "run") {
-      await load(m.model);
+      await load(m.model, m.device || "auto");
+      postMessage({ type: "stage", stage: "run", device });
       const opt = { task: m.task || "transcribe", chunk_length_s: 30, stride_length_s: 5, return_timestamps: true };
       if (m.lang) opt.language = m.lang;
       const out = await asr(m.audio, opt);

@@ -1162,6 +1162,8 @@ function sttWorker() {
     const d = e.data;
     if (d.type === "dl") { STT.onDl && STT.onDl(d); return; }
     if (d.type === "ready") { STT.device = d.device; return; }
+    if (d.type === "stage") { STT.device = d.device; STT.stage = "run"; return; }
+    if (d.type === "fatal") { Object.values(STT.wait).forEach(w => w.no(new Error(d.message))); STT.wait = {}; return; }
     const w = STT.wait[d.id]; if (!w) return; delete STT.wait[d.id];
     d.type === "error" ? w.no(new Error(d.message)) : w.ok(d);
   };
@@ -1169,7 +1171,7 @@ function sttWorker() {
   return STT.w;
 }
 function sttRun(audio, cfg) {
-  return new Promise((ok, no) => { const id = ++STT.n; STT.wait[id] = { ok, no }; sttWorker().postMessage({ type: "run", id, audio, model: STT_MODELS[cfg.model].id, lang: cfg.lang || null, task: cfg.task }, [audio.buffer]); });
+  return new Promise((ok, no) => { const id = ++STT.n; STT.wait[id] = { ok, no }; sttWorker().postMessage({ type: "run", id, audio, model: STT_MODELS[cfg.model].id, lang: cfg.lang || null, task: cfg.task, device: IS_MOBILE ? "wasm" : "auto" }, [audio.buffer]); });
 }
 // 음성 파일을 16kHz 한 채널로 풀기
 async function decodeAudio(file) {
@@ -1185,11 +1187,11 @@ async function decodeAudio(file) {
 }
 // 5분 단위로 나누되, 말이 끊긴 조용한 곳에서 자름
 function splitPoints(d, sr) {
-  const W = 300 * sr, pts = [0];
+  const W = (IS_MOBILE ? 60 : 300) * sr, pts = [0];   // 휴대폰은 1분, PC는 5분 단위로 나눠 자주 진행 표시
   let at = 0;
   while (d.length - at > W + 30 * sr) {
     let best = at + W, low = Infinity; const hop = sr / 10;
-    for (let i = at + W - 15 * sr; i < at + W; i += hop) { let e = 0; for (let j = i; j < i + hop; j++) e += d[j] * d[j]; if (e < low) { low = e; best = i; } }
+    for (let i = at + W - Math.min(15, W / sr / 4) * sr; i < at + W; i += hop) { let e = 0; for (let j = i; j < i + hop; j++) e += d[j] * d[j]; if (e < low) { low = e; best = i; } }
     pts.push(best); at = best;
   }
   pts.push(d.length); return pts;
@@ -1209,17 +1211,31 @@ async function transcribeFile(s, mid, file) {
     const n = note(s.id, mid);
     n.tr = (n.tr.trim() ? n.tr.replace(/\s+$/, "") + "\n\n" : "") + `── 녹음 파일 변환 · ${file.name} (${mmss(dur)}, ${hhmm()} 시작) ──\n`;
     n.at = Date.now(); saveNow(); paintTr(s, mid);
-    STT.onDl = p => ui2.st(`받아쓰기 모델 내려받는 중 (처음 한 번만) ${Math.round(p.loaded / 1048576)} / ${Math.round(p.total / 1048576)}MB`);
+    let stage = "", base = "", chunkT = Date.now();
+    const show = () => ui2.st(base + ` · 경과 ${mmss((Date.now() - t0) / 1000)}` + (stage === "prep" ? " · 모델 준비 중(처음엔 1~3분)" : ""));
+    STT.onDl = p => { const all = p.loaded >= p.total; stage = all ? "prep" : "dl"; base = all ? "모델 내려받기 완료" : `받아쓰기 모델 내려받는 중 (처음 한 번만) ${Math.round(p.loaded / 1048576)} / ${Math.round(p.total / 1048576)}MB`; show(); };
+    const beat = setInterval(() => {
+      if (STT.stage === "run" && stage !== "run") { stage = "run"; }
+      show();
+      // 한 구간이 너무 오래 걸리면 멈춘 것으로 보고 중단 (여기까지 바꾼 내용은 저장됨)
+      const lim = Math.max(8 * 60000, (IS_MOBILE ? 60 : 300) * 6000) + (STT.device ? 0 : 5 * 60000);
+      if (Date.now() - chunkT > lim) { clearInterval(beat); STT.w && STT.w.terminate(); STT.w = null; Object.values(STT.wait).forEach(w => w.no(new Error("변환이 멈췄습니다. 설정에서 품질을 '빠름'으로 바꾸거나 PC에서 변환해 주세요"))); STT.wait = {}; }
+    }, 1000);
+    STT.stage = "";
+    try {
     for (let k = 0; k < pts.length - 1; k++) {
       if (STT.stop) break;
       const a = pts[k], b = pts[k + 1], done = a / sr;
       const eta = k ? Math.round((Date.now() - t0) / done * (dur - done) / 60000) : null;
-      ui2.st(`텍스트로 바꾸는 중 ${Math.round(done / dur * 100)}% (${mmss(done)} / ${mmss(dur)})` + (eta != null ? ` · 약 ${eta}분 남음` : "") + " · 화면을 켜 두세요");
+      base = `텍스트로 바꾸는 중 ${Math.round(done / dur * 100)}% (${mmss(done)} / ${mmss(dur)})` + (eta != null ? ` · 약 ${eta}분 남음` : "") + ` · ${STT_MODELS[cfg.model].name.split(" ")[0]} 품질` + (STT.device ? ` · ${STT.device === "webgpu" ? "그래픽 가속" : "일반 모드"}` : "") + " · 화면을 켜 두세요";
+      if (stage !== "dl" && stage !== "prep") stage = "run"; show(); chunkT = Date.now();
       const r = await sttRun(d.slice(a, b), cfg);
       const lines = (r.chunks.length ? r.chunks : [{ timestamp: [0], text: r.text }])
         .map(c => ({ t: done + ((c.timestamp && c.timestamp[0]) || 0), x: String(c.text || "").trim() })).filter(c => c.x);
       if (lines.length) { n.tr += lines.map(c => `[${mmss(c.t)}] ${c.x}`).join("\n") + "\n"; n.at = Date.now(); saveNow(); paintTr(s, mid); }
+      stage = "run";
     }
+    } finally { clearInterval(beat); }
     const took = Math.round((Date.now() - t0) / 60000);
     ui2.st(STT.stop ? "변환을 중지했습니다. 여기까지 바꾼 내용은 저장되었습니다." : `변환 완료 (${mmss(dur)} 녹음 · ${took || 1}분 걸림${STT.device ? " · " + (STT.device === "webgpu" ? "그래픽 가속" : "일반 모드") : ""}).`);
     syncBadges();
