@@ -1397,12 +1397,13 @@ async function stopARec() {
 }
 // 녹음 방식: 갤럭시(안드로이드)는 휴대폰 녹음기 앱이 기본 (음질이 더 좋고 화면을 꺼도 계속 녹음)
 const NATIVE_OK = /Android/i.test(navigator.userAgent);
-const recMode = () => { const v = settings().arecMode; return v === "app" || !NATIVE_OK ? "app" : "native"; };
+// 녹음기 앱 연결(첨부 모드)은 삼성 녹음기가 최대 약 10분으로 제한하므로, 기본은 앱 안 녹음
+const recMode = () => { const v = settings().arecMode; return v === "native" && NATIVE_OK ? "native" : "app"; };
 function paintARecBtns() {
   const native = recMode() === "native";
-  document.querySelectorAll("[data-arec]").forEach(b => { const me = AREC.on && AREC.mid === b.dataset.arec; b.textContent = me ? "■ 녹음 끝" : native ? "● 녹음 (휴대폰 녹음기)" : "● 녹음 시작"; b.disabled = AREC.on && !me; });
+  document.querySelectorAll("[data-arec]").forEach(b => { const me = AREC.on && AREC.mid === b.dataset.arec; b.textContent = me ? "■ 녹음 끝" : native ? "● 녹음 (녹음기 · 최대 약 10분)" : "● 녹음 시작"; b.disabled = AREC.on && !me; });
   const ios = /iPhone|iPad|iPod/i.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
-  document.querySelectorAll("[data-arecst]").forEach(e => e.textContent = native ? "녹음기에서 정지·저장하면 이 미팅에 자동으로 들어옵니다" : ios ? "화면을 켜 둔 채 녹음 (음성 메모 앱으로 녹음했다면 '파일에 저장' 후 아래 '저장된 녹음 파일 불러와')" : "녹음 파일로 저장 → 끝나면 텍스트로 변환");
+  document.querySelectorAll("[data-arecst]").forEach(e => e.textContent = native ? "녹음기에서 정지·저장하면 이 미팅에 자동으로 들어옵니다 (긴 미팅은 삼성 녹음 앱으로 직접 녹음 → 공유 → 미팅노트)" : NATIVE_OK ? "화면을 켜 둔 채 녹음 · 긴 미팅을 화면 끄고 녹음하려면 삼성 녹음 앱으로 녹음한 뒤 공유 → 미팅노트" : ios ? "화면을 켜 둔 채 녹음 (음성 메모 앱으로 녹음했다면 '파일에 저장' 후 아래 '저장된 녹음 파일 불러와')" : "녹음 파일로 저장 → 끝나면 텍스트로 변환");
 }
 // 휴대폰 녹음기에서 돌아온 파일을 이 미팅의 녹음 목록에 저장
 const NREC = { sid: null, mid: null };

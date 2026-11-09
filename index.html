@@ -9,7 +9,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="미팅노트">
 <link rel="apple-touch-icon" href="icon-192.png">
-<link rel="stylesheet" href="style.css?v=36">
+<link rel="stylesheet" href="style.css?v=37">
 </head>
 <body>
 <div class="wrap">
@@ -125,7 +125,7 @@
     </div>
     <div class="desk">
       <h3>녹음 → 텍스트 변환 (이 기기 안에서 처리)</h3>
-      <label class="f">녹음 버튼을 누르면<select id="arecModeIn"><option value="native">휴대폰 녹음기 앱으로 녹음 (갤럭시 권장 · 음질 좋음 · 화면 꺼도 계속)</option><option value="app">이 앱 안에서 녹음 (화면을 켜 둬야 함)</option></select></label>
+      <label class="f">녹음 버튼을 누르면<select id="arecModeIn"><option value="app">이 앱 안에서 녹음 (시간 제한 없음 · 화면을 켜 둬야 함)</option><option value="native">휴대폰 녹음기 연결 (음질 좋음 · 삼성 녹음기 제한으로 최대 약 10분)</option></select></label>
       <label class="f">변환 품질<select id="sttModelIn"></select></label>
       <label class="f">녹음 언어<select id="sttLangIn"><option value="korean">한국어</option><option value="english">영어</option><option value="">자동 감지 (섞여 있을 때)</option></select></label>
       <label class="sys"><input type="checkbox" id="sttDelIn" checked> 텍스트로 변환한 뒤 녹음 파일 지우기 (권장 · 끄면 '파일 저장'으로 따로 보관 가능)</label>
@@ -171,9 +171,9 @@
   <button class="b" id="recStop" type="button">정지</button>
 </div>
 
-<script src="parser.js?v=36"></script>
-<script>window.APP_VERSION="36";</script>
-<script src="app.js?v=36"></script>
+<script src="parser.js?v=37"></script>
+<script>window.APP_VERSION="37";</script>
+<script src="app.js?v=37"></script>
 <script>if("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js",{updateViaCache:"none"}).catch(()=>{});</script>
 </body>
 </html>
