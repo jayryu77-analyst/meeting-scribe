@@ -9,7 +9,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="미팅노트">
 <link rel="apple-touch-icon" href="icon-192.png">
-<link rel="stylesheet" href="style.css?v=32">
+<link rel="stylesheet" href="style.css?v=33">
 </head>
 <body>
 <div class="wrap">
@@ -58,7 +58,7 @@
   <section class="card inbox" id="inbox" hidden>
     <h2>녹취 올리기</h2>
     <p class="hint" id="inSrc"></p>
-    <div class="row"><label class="b pri file">녹음·텍스트 파일 올리기 (여러 개)<input type="file" id="inFile" multiple accept="audio/*,video/mp4,.m4a,.mp3,.wav,.aac,.amr,.3gp,.ogg,.webm,.flac,.txt,text/plain"></label><button class="b" id="inPaste" type="button">클립보드에서 붙여넣기</button></div>
+    <div class="row"><label class="b pri file">녹음·텍스트 파일 올리기 (여러 개)<input type="file" id="inFile" multiple ></label><button class="b" id="inPaste" type="button">클립보드에서 붙여넣기</button></div>
     <textarea id="inText" rows="5" placeholder="클로바노트: ⋮ 메뉴 → '전체 음성 기록 텍스트 복사' 후 여기에 붙여넣기"></textarea>
     <div class="inlist" id="inList" hidden></div>
     <label class="f" id="inMeetingBox">넣을 미팅<select id="inMeeting"></select></label>
@@ -169,9 +169,9 @@
   <button class="b" id="recStop" type="button">정지</button>
 </div>
 
-<script src="parser.js?v=32"></script>
-<script>window.APP_VERSION="32";</script>
-<script src="app.js?v=32"></script>
+<script src="parser.js?v=33"></script>
+<script>window.APP_VERSION="33";</script>
+<script src="app.js?v=33"></script>
 <script>if("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js",{updateViaCache:"none"}).catch(()=>{});</script>
 </body>
 </html>

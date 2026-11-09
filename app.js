@@ -236,7 +236,7 @@ function card(s, m) {
         <h4>녹취 (자동 받아쓰기 · 다른 녹음 앱 결과를 붙여넣어도 됩니다)</h4>
         <textarea class="tr" id="tr-${m.id}" data-tr="${m.id}" rows="5" placeholder="받아쓰기를 시작하면 여기에 [분:초]와 함께 적힙니다.">${esc(n.tr)}</textarea>
         <div class="st" id="int-${m.id}"></div>
-        <div class="row"><label class="b file">녹음 파일 → 텍스트<input type="file" data-audio="${m.id}" accept="audio/*,video/mp4,.m4a,.mp3,.wav,.aac,.amr,.3gp,.ogg,.webm,.flac"></label><button class="b sm del" type="button" data-sttstop="${m.id}" hidden>변환 중지</button></div>
+        <div class="row"><label class="b file">저장된 녹음 파일 불러와 텍스트로<input type="file" data-audio="${m.id}"></label><button class="b sm del" type="button" data-sttstop="${m.id}" hidden>변환 중지</button></div>
         <div class="st sttst" data-stt="${m.id}"></div>
         <h4>번역</h4>
         <div class="row"><select data-tl="${m.id}" aria-label="번역할 언어">${[["ko", "한국어로"], ["en", "영어로"], ["ja", "일본어로"], ["zh", "중국어로"]].map(([v, t]) => `<option value="${v}" ${v === ((n.tr.match(/[가-힣]/g) || []).length > (n.tr.match(/[A-Za-z]/g) || []).length / 3 ? "en" : "ko") ? "selected" : ""}>${t}</option>`).join("")}</select><button class="b" type="button" data-trans="${m.id}">녹취 번역</button><span class="st" data-tst="${m.id}"></span></div>
@@ -914,6 +914,7 @@ $("inPaste").onclick = async () => {
 async function readTextFile(f) {
   if (isAudio(f)) return { name: f.name, text: "", file: f, audio: true };
   if (/\.docx$/i.test(f.name)) return { name: f.name, text: "", bad: "워드 파일" };
+  if (!(/^text\//.test(f.type) || /\.(txt|text|csv|md)$/i.test(f.name))) return { name: f.name, text: "", bad: "녹음·텍스트가 아닌 파일" };
   return { name: f.name.replace(/\.(txt|text)$/i, ""), text: (await f.text()).trim() };
 }
 $("inFile").onchange = async e => {
