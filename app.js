@@ -776,7 +776,7 @@ function importSums(text) {
 // 크롬은 '웹에서 열기'를 허용한 앱 화면만 열 수 있어서, 녹음 앱은 스토어 앱 페이지(→ '열기')를 거쳐 엽니다.
 const REC_APPS = {
   browser: { name: "브라우저 받아쓰기", label: "받아쓰기 시작" },
-  clova: { name: "클로바노트", label: "클로바노트로 녹음", store: "Play 스토어",
+  clova: { name: "클로바노트", obj: "클로바노트를", to: "클로바노트로", label: "클로바노트로 녹음", store: "Play 스토어",
     url: "intent://details?id=com.naver.clova.minute#Intent;scheme=market;package=com.android.vending;S.browser_fallback_url=" + encodeURIComponent("https://play.google.com/store/apps/details?id=com.naver.clova.minute") + ";end" },
   recorder: { name: "삼성 녹음 앱", label: "녹음 앱으로 녹음", store: "Galaxy Store",
     url: "intent://ProductDetail/com.sec.android.app.voicenote#Intent;scheme=samsungapps;package=com.sec.android.app.samsungapps;S.browser_fallback_url=" + encodeURIComponent("https://play.google.com/store/apps/details?id=com.sec.android.app.voicenote") + ";end" }
@@ -1433,7 +1433,7 @@ async function paintRecs() {
   document.querySelectorAll("[data-recs]").forEach(box => {
     const mine = recs.filter(r => r.sid === s.id && r.mid === box.dataset.recs && !(AREC.on && AREC.rid === r.rid)).sort((a, b) => a.startedAt - b.startedAt);
     box.innerHTML = mine.map(r => `<div class="recitem"><span>🎙 ${new Date(r.startedAt).toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" })} 녹음 · ${mmss(r.dur || 0)}${r.size ? ` · ${(r.size / 1048576).toFixed(1)}MB` : ""}${r.endedAt ? "" : " · 중간에 끊긴 녹음(복구됨)"}</span>
-      <span class="row"><button class="b sm pri" type="button" data-rstt="${r.rid}">텍스트로 변환</button><button class="b sm" type="button" data-rsave="${r.rid}">파일 저장</button><button class="b sm del" type="button" data-rdel="${r.rid}">삭제</button></span></div>`).join("");
+      <span class="row"><button class="b sm pri" type="button" data-rstt="${r.rid}">이 기기에서 변환</button><button class="b sm" type="button" data-rho="clova" data-rid="${r.rid}">클로바노트로</button><button class="b sm" type="button" data-rho="nblm" data-rid="${r.rid}">NotebookLM으로</button><button class="b sm" type="button" data-rsave="${r.rid}">파일 저장</button><button class="b sm del" type="button" data-rdel="${r.rid}">삭제</button></span></div>`).join("");
   });
   syncBadges();
 }
@@ -1464,3 +1464,51 @@ function checkNativeLost() {
 }
 document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") checkNativeLost(); });
 checkNativeLost();
+
+/* ---------- 텍스트 변환을 클로바노트·NotebookLM에 맡기기 ---------- */
+// 녹음 파일을 그 앱으로 보내고, 변환된 텍스트를 다시 받아 같은 미팅에 넣습니다.
+const HANDOFF = {
+  clova: { name: "클로바노트", obj: "클로바노트를", to: "클로바노트로", url: "https://clovanote.naver.com", ok: /\.(m4a|mp3|aac|amr|wav)$/i, max: 300,
+    back: "클로바노트에서 변환이 끝나면 노트 ⋮ → '전체 음성 기록 텍스트 복사'(또는 텍스트 공유 → 미팅노트) → 이 앱 '녹음·녹취 올리기'에 붙여넣기" },
+  nblm: { name: "NotebookLM", obj: "NotebookLM을", to: "NotebookLM으로", url: "https://notebooklm.google.com", ok: /\.(m4a|mp3|aac|wav|ogg|flac)$/i, max: 200,
+    back: "NotebookLM에서 노트북에 추가된 녹음(소스)을 열어 녹취 텍스트를 복사 → 이 앱 '녹음·녹취 올리기'에 붙여넣기. NotebookLM에 '이 녹음을 요약해줘'라고 물어 요약을 복사해 요약 칸에 넣어도 됩니다" },
+};
+// webm 등 앱이 받지 않는 형식은 WAV(16kHz·모노)로 바꿔서 보냄
+function toWav(d, sr) {
+  const n = d.length, buf = new ArrayBuffer(44 + n * 2), v = new DataView(buf), w = (o, t) => [...t].forEach((c, i) => v.setUint8(o + i, c.charCodeAt(0)));
+  w(0, "RIFF"); v.setUint32(4, 36 + n * 2, true); w(8, "WAVEfmt "); v.setUint32(16, 16, true); v.setUint16(20, 1, true); v.setUint16(22, 1, true);
+  v.setUint32(24, sr, true); v.setUint32(28, sr * 2, true); v.setUint16(32, 2, true); v.setUint16(34, 16, true); w(36, "data"); v.setUint32(40, n * 2, true);
+  for (let i = 0; i < n; i++) { const x = Math.max(-1, Math.min(1, d[i])); v.setInt16(44 + i * 2, x < 0 ? x * 0x8000 : x * 0x7fff, true); }
+  return new Blob([buf], { type: "audio/wav" });
+}
+async function handoff(app, s, mid, file, btn) {
+  const A = HANDOFF[app], label = btn.textContent;
+  btn.disabled = true;
+  try {
+    let f = file;
+    if (!A.ok.test(f.name)) { btn.textContent = "형식 바꾸는 중…"; const d = await decodeAudio(f); f = new File([toWav(d, 16000)], f.name.replace(/\.[^.]+$/, "") + ".wav", { type: "audio/wav", lastModified: f.lastModified }); }
+    if (f.size > A.max * 1048576) { msg(`${A.name}${app === "clova" ? "는" : "은"} 한 파일 ${A.max}MB까지 받습니다. 이 녹음(${Math.round(f.size / 1048576)}MB)은 '이 기기에서 변환'을 써주세요.`); return; }
+    try { localStorage.setItem("ndr-handoff", JSON.stringify({ sid: s.id, mid, app, at: Date.now() })); } catch (e) { }
+    if (IS_MOBILE && navigator.canShare && navigator.canShare({ files: [f] })) {
+      try { await navigator.share({ files: [f], title: f.name }); } catch (e) { if (e.name === "AbortError") return; throw e; }
+      msg(`공유창에서 ${A.obj} 고르셨다면 그 앱에서 변환됩니다. ${A.back}. 돌아오면 이 미팅이 자동으로 선택됩니다.`, true);
+    } else {
+      const a = document.createElement("a"); a.href = URL.createObjectURL(f); a.download = f.name; document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 2000);
+      window.open(A.url, "_blank", "noopener");
+      msg(`녹음 파일(${f.name})을 내려받고 ${A.obj} 열었습니다. 거기서 파일을 업로드하세요. ${A.back}.`, true);
+    }
+  } catch (e) { msg(`${A.to} 보내지 못했습니다: ` + e.message); }
+  finally { btn.disabled = false; btn.textContent = label; }
+}
+$("timeline").addEventListener("click", async e => {
+  const b = e.target.closest("[data-rho]"); if (!b) return;
+  const rec = (await ADB.recs()).find(r => r.rid === b.dataset.rid); if (!rec) return;
+  handoff(b.dataset.rho, cur(), rec.mid, await recFile(rec.rid), b);
+});
+// 클로바노트·NotebookLM에서 돌아온 텍스트는 보냈던 미팅을 먼저 고름
+{ const gm0 = guessMeeting; guessMeeting = function (s, text, name) {
+    const g = gm0(s, text, name); if (g.sure) return g;
+    let h = null; try { h = JSON.parse(localStorage.getItem("ndr-handoff") || "null"); } catch (e) { }
+    if (h && h.sid === s.id && Date.now() - h.at < 12 * 3600000) { const m = s.meetings.find(x => x.id === h.mid); if (m) return { m, sure: true, why: `${HANDOFF[h.app]?.to || "외부 앱으로"} 보낸 녹음의 미팅` }; }
+    return g;
+  }; }
