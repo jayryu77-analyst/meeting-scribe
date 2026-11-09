@@ -1401,7 +1401,8 @@ const recMode = () => { const v = settings().arecMode; return v === "app" || !NA
 function paintARecBtns() {
   const native = recMode() === "native";
   document.querySelectorAll("[data-arec]").forEach(b => { const me = AREC.on && AREC.mid === b.dataset.arec; b.textContent = me ? "■ 녹음 끝" : native ? "● 녹음 (휴대폰 녹음기)" : "● 녹음 시작"; b.disabled = AREC.on && !me; });
-  document.querySelectorAll("[data-arecst]").forEach(e => e.textContent = native ? "녹음기에서 정지·저장하면 이 미팅에 자동으로 들어옵니다" : "녹음 파일로 저장 → 끝나면 텍스트로 변환");
+  const ios = /iPhone|iPad|iPod/i.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+  document.querySelectorAll("[data-arecst]").forEach(e => e.textContent = native ? "녹음기에서 정지·저장하면 이 미팅에 자동으로 들어옵니다" : ios ? "화면을 켜 둔 채 녹음 (음성 메모 앱으로 녹음했다면 '파일에 저장' 후 아래 '저장된 녹음 파일 불러와')" : "녹음 파일로 저장 → 끝나면 텍스트로 변환");
 }
 // 휴대폰 녹음기에서 돌아온 파일을 이 미팅의 녹음 목록에 저장
 const NREC = { sid: null, mid: null };
