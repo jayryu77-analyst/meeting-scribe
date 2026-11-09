@@ -1434,7 +1434,7 @@ async function paintRecs() {
   document.querySelectorAll("[data-recs]").forEach(box => {
     const mine = recs.filter(r => r.sid === s.id && r.mid === box.dataset.recs && !(AREC.on && AREC.rid === r.rid)).sort((a, b) => a.startedAt - b.startedAt);
     box.innerHTML = mine.map(r => `<div class="recitem"><span>🎙 ${new Date(r.startedAt).toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" })} 녹음 · ${mmss(r.dur || 0)}${r.size ? ` · ${(r.size / 1048576).toFixed(1)}MB` : ""}${r.endedAt ? "" : " · 중간에 끊긴 녹음(복구됨)"}</span>
-      <span class="row"><button class="b sm pri" type="button" data-rstt="${r.rid}">이 기기에서 변환</button><button class="b sm" type="button" data-rho="clova" data-rid="${r.rid}">클로바노트로</button><button class="b sm" type="button" data-rho="nblm" data-rid="${r.rid}">NotebookLM으로</button><button class="b sm" type="button" data-rsave="${r.rid}">파일 저장</button><button class="b sm del" type="button" data-rdel="${r.rid}">삭제</button></span></div>`).join("");
+      <span class="row"><button class="b sm pri" type="button" data-rstt="${r.rid}">이 기기에서 변환</button>${["clova", "nblm"].map(a => { const ready = typeof PREP !== "undefined" && PREP[r.rid + "|" + a]; return `<button class="b sm${ready ? " pri" : ""}" type="button" data-rho="${a}" data-rid="${r.rid}">${ready ? "준비됨 · 눌러서 " : ""}${a === "clova" ? "클로바노트로" : "NotebookLM으로"}${ready ? " 보내기" : ""}</button>`; }).join("")}<button class="b sm" type="button" data-rsave="${r.rid}">파일 저장</button><button class="b sm del" type="button" data-rdel="${r.rid}">삭제</button></span></div>`).join("");
   });
   syncBadges();
 }
@@ -1482,29 +1482,44 @@ function toWav(d, sr) {
   for (let i = 0; i < n; i++) { const x = Math.max(-1, Math.min(1, d[i])); v.setInt16(44 + i * 2, x < 0 ? x * 0x8000 : x * 0x7fff, true); }
   return new Blob([buf], { type: "audio/wav" });
 }
-async function handoff(app, s, mid, file, btn) {
-  const A = HANDOFF[app], label = btn.textContent;
+// 형식 변환에 시간이 걸리면 휴대폰이 공유창을 막으므로: ① 파일 준비 → ② 한 번 더 눌러 보내기
+const PREP = {};
+async function prepFile(app, file) {
+  const A = HANDOFF[app];
+  if (A.ok.test(file.name)) return file;
+  const d = await decodeAudio(file);
+  return new File([toWav(d, 16000)], file.name.replace(/\.[^.]+$/, "") + ".wav", { type: "audio/wav", lastModified: file.lastModified });
+}
+async function handoff(app, s, mid, file, btn, rid) {
+  const A = HANDOFF[app], key = rid + "|" + app, label = `${A.to}`;
   btn.disabled = true;
   try {
-    let f = file;
-    if (!A.ok.test(f.name)) { btn.textContent = "형식 바꾸는 중…"; const d = await decodeAudio(f); f = new File([toWav(d, 16000)], f.name.replace(/\.[^.]+$/, "") + ".wav", { type: "audio/wav", lastModified: f.lastModified }); }
-    if (f.size > A.max * 1048576) { msg(`${A.name}${app === "clova" ? "는" : "은"} 한 파일 ${A.max}MB까지 받습니다. 이 녹음(${Math.round(f.size / 1048576)}MB)은 '이 기기에서 변환'을 써주세요.`); return; }
+    let f = PREP[key], fresh = !!f;
+    if (!f) {
+      if (!A.ok.test(file.name)) btn.textContent = "보낼 파일 준비 중…";
+      f = await prepFile(app, file);
+      if (f.size > A.max * 1048576) { msg(`${A.name}${app === "clova" ? "는" : "은"} 한 파일 ${A.max}MB까지 받습니다. 이 녹음(${Math.round(f.size / 1048576)}MB)은 '이 기기에서 변환'이나 '파일 저장' 후 직접 올려주세요.`); return; }
+      if (f !== file && IS_MOBILE) { PREP[key] = f; btn.textContent = `준비됨 · 눌러서 ${A.to} 보내기`; btn.classList.add("pri"); return; }
+    }
     try { localStorage.setItem("ndr-handoff", JSON.stringify({ sid: s.id, mid, app, at: Date.now() })); } catch (e) { }
     if (IS_MOBILE && navigator.canShare && navigator.canShare({ files: [f] })) {
-      try { await navigator.share({ files: [f], title: f.name }); } catch (e) { if (e.name === "AbortError") return; throw e; }
-      msg(`공유창에서 ${A.obj} 고르셨다면 그 앱에서 변환됩니다. ${A.back}. 돌아오면 이 미팅이 자동으로 선택됩니다.`, true);
+      try { await navigator.share({ files: [f], title: f.name }); }
+      catch (e) { if (e.name === "AbortError") return; if (e.name === "NotAllowedError") { PREP[key] = f; btn.textContent = `준비됨 · 눌러서 ${A.to} 보내기`; btn.classList.add("pri"); msg("한 번 더 눌러주세요."); return; } throw e; }
+      delete PREP[key];
+      msg(`공유창에서 ${A.obj} 고르셨다면 그 앱에서 변환됩니다(목록에 없으면 앱 설치 필요). ${A.back}. 돌아오면 이 미팅이 자동으로 선택됩니다.`, true);
     } else {
       const a = document.createElement("a"); a.href = URL.createObjectURL(f); a.download = f.name; document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 2000);
-      window.open(A.url, "_blank", "noopener");
-      msg(`녹음 파일(${f.name})을 내려받고 ${A.obj} 열었습니다. 거기서 파일을 업로드하세요. ${A.back}.`, true);
+      window.open(A.url, "_blank", "noopener"); delete PREP[key];
+      msg(`녹음 파일(${f.name})을 저장하고 ${A.obj} 열었습니다. 거기서 '소스 추가·파일 업로드'로 올리세요. ${A.back}.`, true);
     }
-  } catch (e) { msg(`${A.to} 보내지 못했습니다: ` + e.message); }
-  finally { btn.disabled = false; btn.textContent = label; }
+    btn.textContent = label; btn.classList.remove("pri");
+  } catch (e) { msg(`${A.to} 보내지 못했습니다: ` + e.message + " · '파일 저장' 후 그 앱에서 직접 올려도 됩니다."); btn.textContent = label; }
+  finally { btn.disabled = false; }
 }
 $("timeline").addEventListener("click", async e => {
   const b = e.target.closest("[data-rho]"); if (!b) return;
   const rec = (await ADB.recs()).find(r => r.rid === b.dataset.rid); if (!rec) return;
-  handoff(b.dataset.rho, cur(), rec.mid, await recFile(rec.rid), b);
+  handoff(b.dataset.rho, cur(), rec.mid, PREP[rec.rid + "|" + b.dataset.rho] ? null : await recFile(rec.rid), b, rec.rid);
 });
 // 클로바노트·NotebookLM에서 돌아온 텍스트는 보냈던 미팅을 먼저 고름
 { const gm0 = guessMeeting; guessMeeting = function (s, text, name) {
